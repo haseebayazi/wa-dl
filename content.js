@@ -20,7 +20,7 @@
   const { selectors, helpers, storage, dom, download } = globalThis.WAMD;
 
   /** Cached summary of the last media scan (served to the popup). */
-  let lastScan = { chatName: null, counts: {}, total: 0, loaded: 0, at: 0 };
+  let lastScan = { chatName: null, counts: {}, senders: [], total: 0, loaded: 0, at: 0 };
 
   /** blob: URLs already auto-downloaded from the viewer this session. */
   const autoDownloaded = new Set();
@@ -89,14 +89,17 @@
   function rescan() {
     const items = dom.scanChatMedia();
     const counts = {};
+    const senders = new Set();
     let loaded = 0;
     for (const item of items) {
       counts[item.kind] = (counts[item.kind] || 0) + 1;
       if (item.loaded) loaded += 1;
+      if (item.sender) senders.add(item.sender);
     }
     lastScan = {
       chatName: dom.getChatName(),
       counts,
+      senders: [...senders].sort((a, b) => a.localeCompare(b)),
       total: items.length,
       loaded,
       at: Date.now()
@@ -211,7 +214,8 @@
         chatName: dom.getChatName() || 'Unknown Chat',
         sender,
         messageId,
-        when
+        when,
+        caption: dom.getItemCaption(el, kind)
       });
 
       if (payload.tooLarge) {
@@ -247,14 +251,19 @@
   }
 
   /**
-   * Bulk download: scan the chat, apply the requested filter/limit and
+   * Bulk download: scan the chat, apply the requested filters/limit and
    * feed everything into the background queue as one batch.
    *
    * @param {'images'|'videos'|'documents'|'audio'|'all'} filter
    * @param {number} [limit=0]  0 = no limit; N = newest N items
+   * @param {{dateFrom?: string, dateTo?: string,
+   *          senders?: string[]}} [opts]  extra filters:
+   *          - dateFrom/dateTo: "YYYY-MM-DD" range (inclusive); items
+   *            with no parseable timestamp are skipped when a range is set
+   *          - senders: whitelist of sender names (empty/absent = all)
    * @returns {Promise<object>} summary for the popup
    */
-  async function bulkDownload(filter, limit) {
+  async function bulkDownload(filter, limit, opts = {}) {
     const KIND_FILTERS = {
       images: ['image', 'gif', 'sticker'],
       videos: ['video'],
@@ -265,6 +274,27 @@
     const kinds = KIND_FILTERS[filter] === undefined ? null : KIND_FILTERS[filter];
 
     let items = dom.scanChatMedia().filter((i) => !kinds || kinds.includes(i.kind));
+
+    // Sender filter (within the currently open chat).
+    if (Array.isArray(opts.senders) && opts.senders.length) {
+      const allow = new Set(opts.senders);
+      items = items.filter((i) => allow.has(i.sender));
+    }
+
+    // Date-range filter on the message timestamp. Items whose date could
+    // not be parsed are dropped (and counted) so the range stays honest.
+    let undated = 0;
+    const from = opts.dateFrom ? new Date(`${opts.dateFrom}T00:00:00`) : null;
+    const to = opts.dateTo ? new Date(`${opts.dateTo}T23:59:59.999`) : null;
+    if (from || to) {
+      items = items.filter((i) => {
+        if (!(i.when instanceof Date)) { undated += 1; return false; }
+        if (from && i.when < from) return false;
+        if (to && i.when > to) return false;
+        return true;
+      });
+    }
+
     // Newest messages are at the bottom of the DOM → take from the end.
     if (limit > 0) items = items.slice(-limit);
 
@@ -302,8 +332,9 @@
 
     toast(`Bulk download: ${queued} queued` +
       (docsClicked ? `, ${docsClicked} documents via WhatsApp` : '') +
-      (skipped ? `, ${skipped} not loaded` : ''));
-    return { queued, documents: docsClicked, skipped, total: items.length };
+      (skipped ? `, ${skipped} not loaded` : '') +
+      (undated ? `, ${undated} skipped (no date)` : ''));
+    return { queued, documents: docsClicked, skipped, undated, total: items.length };
   }
 
   /**
@@ -371,6 +402,7 @@
           result: {
             chatName: lastScan.chatName,
             counts: lastScan.counts,
+            senders: lastScan.senders,
             total: lastScan.total,
             loaded: lastScan.loaded,
             health: selectors.healthReport()
@@ -379,7 +411,11 @@
         return false;
 
       case 'WAMD_BULK_DOWNLOAD':
-        bulkDownload(msg.filter, msg.limit || 0)
+        bulkDownload(msg.filter, msg.limit || 0, {
+          dateFrom: msg.dateFrom || null,
+          dateTo: msg.dateTo || null,
+          senders: msg.senders || null
+        })
           .then((summary) => sendResponse({ ok: true, result: summary }))
           .catch((err) => sendResponse({ ok: false, error: err.message }));
         return true; // async

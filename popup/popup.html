@@ -64,6 +64,17 @@
             <option value="100">Last 100</option>
           </select>
         </div>
+        <div class="row dates">
+          <label class="small" for="date-from">From</label>
+          <input id="date-from" type="date" />
+          <label class="small" for="date-to">To</label>
+          <input id="date-to" type="date" />
+          <button id="btn-clear-dates" class="mini" title="Clear dates" type="button">✕</button>
+        </div>
+        <details id="sender-filter" class="senders">
+          <summary class="small">Filter by sender <span id="sender-summary" class="muted"></span></summary>
+          <div id="sender-list" class="sender-list"></div>
+        </details>
         <div class="btn-grid">
           <button class="btn" data-filter="images">🖼 Images</button>
           <button class="btn" data-filter="videos">🎬 Videos</button>

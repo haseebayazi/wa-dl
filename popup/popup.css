@@ -184,7 +184,7 @@ body {
 .row { display: flex; align-items: center; gap: 8px; }
 .row.end { justify-content: flex-end; margin-top: 8px; }
 
-select, input[type="search"] {
+select, input[type="search"], input[type="date"] {
   flex: 1;
   width: 100%;
   border: 1px solid var(--card-border);
@@ -196,6 +196,54 @@ select, input[type="search"] {
   outline: none;
 }
 select:focus, input:focus { border-color: var(--accent); }
+
+/* Date range row: two compact inputs sharing the width. */
+.row.dates { margin-top: 8px; }
+.row.dates input[type="date"] { flex: 1; min-width: 0; padding: 7px 8px; }
+.row.dates label { flex: none; }
+
+/* ===== Sender filter ===== */
+
+.senders { margin-top: 8px; }
+.senders summary {
+  cursor: pointer;
+  color: var(--muted);
+  list-style: none;
+  padding: 6px 0;
+  user-select: none;
+}
+.senders summary::-webkit-details-marker { display: none; }
+.senders summary::before { content: "▸ "; }
+.senders[open] summary::before { content: "▾ "; }
+
+.sender-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 132px;
+  overflow-y: auto;
+  margin-top: 4px;
+}
+.sender-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.sender-item:hover { background: var(--chip); }
+.sender-item input { flex: none; accent-color: var(--accent); }
+.sender-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Standalone mini button (e.g. clear-dates) */
+.mini {
+  border: none; background: transparent; cursor: pointer;
+  color: var(--muted); font-size: 13px; padding: 4px 6px; border-radius: 8px;
+  flex: none;
+}
+.mini:hover { color: var(--accent); background: var(--chip); }
 
 /* ===== Progress bar ===== */
 
