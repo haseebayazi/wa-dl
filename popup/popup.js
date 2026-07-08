@@ -84,6 +84,10 @@
       window.close();
     });
     $('btn-refresh').addEventListener('click', refreshChatState);
+    $('btn-clear-dates').addEventListener('click', () => {
+      $('date-from').value = '';
+      $('date-to').value = '';
+    });
     $('btn-clear-queue').addEventListener('click', async () => {
       await send({ type: 'WAMD_CLEAR_SETTLED' });
       refreshQueue();
@@ -141,7 +145,7 @@
       $('chat-name').textContent = 'WhatsApp still loading — reload the tab if this persists';
       return;
     }
-    const { chatName, counts, total, loaded, health } = res.result;
+    const { chatName, counts, senders, total, loaded, health } = res.result;
 
     $('chat-name').textContent = chatName ? `Chat: ${chatName}` : 'No chat open';
     const kinds = ['image', 'video', 'audio', 'voice', 'document', 'sticker'];
@@ -150,6 +154,7 @@
       const extra = kind === 'image' ? (counts.gif || 0) : 0;
       $(`c-${kind}`).textContent = (counts[kind] || 0) + extra;
     }
+    renderSenders(senders || []);
     $('scan-note').textContent = total
       ? `${loaded} of ${total} items loaded and downloadable`
       : 'No media detected — open a chat and scroll through it';
@@ -166,23 +171,78 @@
     }
   }
 
+  /* ======================== Sender filter (chat) ======================== */
+
+  /**
+   * Render one checkbox per detected sender in the open chat, preserving
+   * any selections across refreshes. No selection means "all senders".
+   *
+   * @param {string[]} senders  distinct sender names from the last scan
+   */
+  function renderSenders(senders) {
+    const list = $('sender-list');
+    const prev = new Set(selectedSenders());
+    list.textContent = '';
+
+    if (!senders.length) {
+      const p = document.createElement('p');
+      p.className = 'muted small';
+      p.textContent = 'No senders detected yet — scroll the chat.';
+      list.appendChild(p);
+      updateSenderSummary();
+      return;
+    }
+
+    for (const name of senders) {
+      const label = document.createElement('label');
+      label.className = 'sender-item';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.value = name;
+      cb.checked = prev.has(name);
+      cb.addEventListener('change', updateSenderSummary);
+      const span = document.createElement('span');
+      span.textContent = name;
+      label.append(cb, span);
+      list.appendChild(label);
+    }
+    updateSenderSummary();
+  }
+
+  /** The list of currently checked sender names (empty = all). */
+  function selectedSenders() {
+    return Array.from($('sender-list').querySelectorAll('input:checked'))
+      .map((cb) => cb.value);
+  }
+
+  /** Update the "(N selected)" / "(all)" hint next to the sender list. */
+  function updateSenderSummary() {
+    const n = selectedSenders().length;
+    $('sender-summary').textContent = n ? `(${n} selected)` : '(all)';
+  }
+
   /* ========================== Bulk downloads ========================== */
 
   /**
-   * Kick off a bulk download for the clicked filter button, using the
-   * scope selector for the item limit. Shows a busy spinner until the
-   * batch has been fully enqueued by the content script.
+   * Kick off a bulk download for the clicked filter button, applying the
+   * scope limit, optional date range and sender selection. Shows a busy
+   * spinner until the batch has been fully enqueued by the content script.
    *
    * @param {HTMLButtonElement} btn  clicked button (data-filter attr)
    */
   async function startBulk(btn) {
     const filter = btn.dataset.filter;
     const limit = parseInt($('scope').value, 10) || 0;
+    const dateFrom = $('date-from').value || null;
+    const dateTo = $('date-to').value || null;
+    const senders = selectedSenders();
 
     btn.disabled = true;
     btn.classList.add('busy');
     try {
-      const res = await sendToTab({ type: 'WAMD_BULK_DOWNLOAD', filter, limit });
+      const res = await sendToTab({
+        type: 'WAMD_BULK_DOWNLOAD', filter, limit, dateFrom, dateTo, senders
+      });
       if (!res || !res.ok) {
         $('scan-note').textContent = 'Bulk download failed — is a chat open?';
       }

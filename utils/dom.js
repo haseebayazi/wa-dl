@@ -112,6 +112,54 @@
   }
 
   /**
+   * Read the caption text of the media message containing `el`, if any.
+   * Used by the "caption" naming style. Returns null when the bubble has
+   * no caption (plain media) or the selector no longer matches.
+   *
+   * @param {Element} el  any element inside a media message
+   * @returns {string|null}
+   */
+  function getCaption(el) {
+    const bubble = S().closest(el, 'messageContainer');
+    if (!bubble) return null;
+    const capEl = S().query('mediaCaption', bubble);
+    if (!capEl) return null;
+    const text = (capEl.textContent || '').replace(/\s+/g, ' ').trim();
+    return text || null;
+  }
+
+  /**
+   * Read the original filename shown on a document bubble (e.g.
+   * "invoice.pdf"). Returned with its extension stripped so the caller
+   * can append the detected one; null when unavailable.
+   *
+   * @param {Element} el  the document bubble / an element inside it
+   * @returns {string|null}
+   */
+  function getDocumentName(el) {
+    const bubble = S().closest(el, 'messageContainer') || el;
+    const titleEl = S().query('documentTitle', bubble);
+    if (!titleEl) return null;
+    const raw = (titleEl.getAttribute('title') || titleEl.textContent || '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!raw) return null;
+    return raw.replace(/\.[A-Za-z0-9]{1,8}$/, '') || raw;
+  }
+
+  /**
+   * Best caption-like label for a scanned item: the media caption for
+   * image/video/audio, or the original filename for documents.
+   *
+   * @param {Element} el
+   * @param {string} kind
+   * @returns {string|null}
+   */
+  function getItemCaption(el, kind) {
+    return kind === 'document' ? getDocumentName(el) : getCaption(el);
+  }
+
+  /**
    * Classify a media element found in the message list into one of the
    * extension's media kinds. Returns null for elements that are not
    * downloadable media (avatars, UI images, link previews without blob).
@@ -189,7 +237,8 @@
       seen.add(el);
       const { messageId } = getMessageInfo(el);
       const { sender, when } = getSenderAndTime(el);
-      found.push({ el, kind, loaded, messageId, sender, when });
+      const caption = getItemCaption(el, kind);
+      found.push({ el, kind, loaded, messageId, sender, when, caption });
     };
 
     // Loaded media elements (blob: URLs present).
@@ -263,6 +312,9 @@
     getChatName,
     getMessageInfo,
     getSenderAndTime,
+    getCaption,
+    getDocumentName,
+    getItemCaption,
     classifyMediaElement,
     getMediaSource,
     scanChatMedia,

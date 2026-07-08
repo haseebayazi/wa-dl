@@ -84,6 +84,9 @@
    * Naming styles:
    *   chat_datetime    → ChatName_YYYY-MM-DD_HH-MM-SS.ext
    *   sender_messageid → Sender_MessageID.ext
+   *   caption          → <caption / document name>.ext
+   *                      (falls back to chat_datetime when the message
+   *                       has no caption)
    *
    * With `organizeFolders` on, the file is placed under
    *   <downloadFolder>/<ChatName>/<TypeFolder>/
@@ -91,19 +94,25 @@
    *
    * @param {object} settings  resolved settings object
    * @param {{kind: string, chatName: string, sender: string,
-   *          messageId: string|null, when: Date|null, ext: string}} meta
+   *          messageId: string|null, when: Date|null, ext: string,
+   *          caption: string|null}} meta
    * @returns {string} path relative to the browser download directory
    */
   function buildFilename(settings, meta) {
     const h = H();
     const chat = h.sanitizeFilename(meta.chatName || 'Unknown Chat');
     const ext = meta.ext || 'bin';
+    const datetime = () =>
+      `${chat}_${h.timestampSlug(meta.when instanceof Date ? meta.when : new Date())}`;
 
     let base;
-    if (settings.namingStyle === 'sender_messageid' && meta.messageId) {
+    if (settings.namingStyle === 'caption' && meta.caption) {
+      // Caption text can be long / multi-word; sanitize and cap it.
+      base = h.sanitizeFilename(meta.caption, 80);
+    } else if (settings.namingStyle === 'sender_messageid' && meta.messageId) {
       base = `${h.sanitizeFilename(meta.sender || 'Unknown')}_${h.sanitizeFilename(meta.messageId, 40)}`;
     } else {
-      base = `${chat}_${h.timestampSlug(meta.when instanceof Date ? meta.when : new Date())}`;
+      base = datetime();
     }
 
     const segments = [h.sanitizeFilename(settings.downloadFolder || 'WhatsApp')];

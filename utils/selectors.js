@@ -115,7 +115,18 @@
     // The filename label inside a document bubble.
     documentTitle: [
       'span[data-testid="document-title"]',
-      'div[data-testid="document-thumb"] ~ div span[dir="auto"]'
+      'div[data-testid="document-thumb"] ~ div span[dir="auto"]',
+      'div[role="button"][title] span[dir="auto"]'
+    ],
+
+    // Caption text attached to an image/video message. WhatsApp renders
+    // it as selectable text inside the same bubble as the media.
+    mediaCaption: [
+      'span[data-testid="media-caption"]',
+      'div[class*="copyable-text"] span.selectable-text',
+      'span.selectable-text.copyable-text',
+      'span.selectable-text span[dir="ltr"]',
+      'span.selectable-text'
     ],
 
     /* ---------------- Full-screen media viewer ---------------- */

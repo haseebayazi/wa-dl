@@ -37,7 +37,11 @@
         <select id="namingStyle">
           <option value="chat_datetime">ChatName_YYYY-MM-DD_HH-MM-SS.jpg</option>
           <option value="sender_messageid">Sender_MessageID.mp4</option>
+          <option value="caption">Caption / document name (falls back to date)</option>
         </select>
+        <em class="small">Uses the image/video caption or a document's own filename.
+          Media sent without a caption falls back to the date format. Documents
+          downloaded through WhatsApp keep WhatsApp's filename.</em>
       </label>
 
       <label class="toggle">

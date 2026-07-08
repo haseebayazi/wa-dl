@@ -140,11 +140,14 @@ wa-media-downloader/
 4. **Duplicate detection.** Completed downloads are recorded in IndexedDB
    keyed by content hash; re-downloads are skipped (configurable).
 5. **Bulk download.** The popup asks the content script to scan the open chat,
-   filter by type/scope and enqueue everything as a batch — one summary
-   notification when the batch settles.
+   filter by type, scope, date range and sender, and enqueue everything as a
+   batch — one summary notification when the batch settles. Items whose
+   timestamp can't be parsed are skipped (and counted) when a date range is set.
 6. **Documents** are not exposed as blobs in the message list, so bulk
-   document download triggers WhatsApp's own download control on each bubble
-   (WhatsApp's default filename applies on that path).
+   document download triggers WhatsApp's own download control on each bubble.
+   WhatsApp's default filename (which is usually the document's real name)
+   applies on that path — the "caption / document name" naming style therefore
+   only renames blob-backed media (images, videos, audio), not documents.
 7. **Oversized media** (> ~44 MB, larger than the messaging limit once
    base64-encoded) is saved directly from the page via a temporary anchor —
    it lands in the default download folder but still counts in history/stats.
@@ -156,8 +159,13 @@ wa-media-downloader/
 - Chat media browser in the popup: current chat name + per-type counts.
 - Bulk download: images / videos / documents / audio / everything, scoped to
   everything loaded, last 50 or last 100.
-- Two naming styles: `ChatName_YYYY-MM-DD_HH-MM-SS.ext` or
-  `Sender_MessageID.ext`.
+- Bulk filters (within the open chat): a **date range** (From/To on the
+  message timestamp) and a **per-sender** picker so you can grab just one
+  group member's media. No selection = everyone.
+- Three naming styles: `ChatName_YYYY-MM-DD_HH-MM-SS.ext`,
+  `Sender_MessageID.ext`, or **caption / document name** (uses an image or
+  video's caption, or a document's own filename, and falls back to the date
+  format when a message has no caption).
 - Optional folder organization: `WhatsApp/<Chat>/<Images|Videos|…>/`.
 - Duplicate detection via SHA-256 content hashes (IndexedDB history).
 - Download queue with progress bar, retry, cancel and clear-finished.
