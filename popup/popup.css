@@ -245,6 +245,41 @@ select:focus, input:focus { border-color: var(--accent); }
 }
 .mini:hover { color: var(--accent); background: var(--chip); }
 
+/* ===== Engine card ===== */
+
+.badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--chip);
+  color: var(--muted);
+}
+.badge.ok  { background: rgba(0, 168, 132, 0.18); color: var(--accent); }
+.badge.err { background: rgba(255, 99, 99, 0.15); color: var(--danger); }
+
+#engine-chat { max-width: 100%; }
+
+.etypes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 10px;
+  margin-top: 8px;
+}
+.etype {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.etype input { accent-color: var(--accent); }
+
+#e-limit { max-width: 90px; flex: none; }
+#engine-download { margin-top: 10px; }
+
 /* ===== Progress bar ===== */
 
 .progress {
