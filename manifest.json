@@ -51,21 +51,16 @@
         "utils/storage.js",
         "utils/dom.js",
         "utils/download.js",
-        "content.js",
-        "wa-engine.js"
+        "content.js"
       ],
       "css": ["styles/content.css"],
       "run_at": "document_idle"
     },
     {
       "matches": ["https://web.whatsapp.com/*"],
-      "js": [
-        "vendor/wppconnect-wa.js",
-        "wa-bridge.js",
-        "inject.js"
-      ],
+      "js": ["inject.js"],
       "world": "MAIN",
-      "run_at": "document_start"
+      "run_at": "document_idle"
     }
   ]
 }

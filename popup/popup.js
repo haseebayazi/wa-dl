@@ -45,150 +45,6 @@
       refreshStats(),
       runSearch('')
     ]);
-
-    if (onSite) engineInit();
-  }
-
-  /* ============================ Engine ============================ */
-
-  /** Poll the engine status until it is ready (or errors), then load chats. */
-  async function engineInit() {
-    wireEngineEvents();
-    const ok = await waitForEngine(24); // ~48s max
-    if (ok) await loadEngineChats();
-  }
-
-  /**
-   * Ask the content-script relay for engine status. Retries while the
-   * engine is still connecting to WhatsApp.
-   *
-   * @param {number} tries
-   * @returns {Promise<boolean>} true once ready
-   */
-  async function waitForEngine(tries) {
-    const badge = $('engine-status');
-    for (let i = 0; i < tries; i++) {
-      const res = await sendToTab({ type: 'WAMD_ENGINE_STATUS' });
-      const s = res && res.ok ? res.result : null;
-      if (s && s.readyState === 'ready') {
-        badge.textContent = 'connected';
-        badge.className = 'badge ok';
-        return true;
-      }
-      if (s && s.readyState === 'error') {
-        badge.textContent = 'unavailable';
-        badge.className = 'badge err';
-        $('engine-note').textContent = `Engine error: ${s.error || 'unknown'}. Reload the WhatsApp tab and try again.`;
-        return false;
-      }
-      badge.textContent = 'connecting…';
-      badge.className = 'badge';
-      await new Promise((r) => setTimeout(r, 2000));
-    }
-    badge.textContent = 'timed out';
-    badge.className = 'badge err';
-    $('engine-note').textContent = 'Engine did not connect. Make sure you are logged into WhatsApp Web, then reload the tab.';
-    return false;
-  }
-
-  /** Attach engine-card listeners once. */
-  let engineWired = false;
-  function wireEngineEvents() {
-    if (engineWired) return;
-    engineWired = true;
-    $('engine-reload-chats').addEventListener('click', loadEngineChats);
-    $('engine-chat').addEventListener('change', loadEngineStats);
-    $('engine-download').addEventListener('click', startEngineDownload);
-  }
-
-  /** Populate the chat dropdown from the engine. */
-  async function loadEngineChats() {
-    const sel = $('engine-chat');
-    sel.innerHTML = '<option value="">Loading chats…</option>';
-    const res = await sendToTab({ type: 'WAMD_ENGINE_CHATS' });
-    if (!res || !res.ok) {
-      sel.innerHTML = '<option value="">Could not load chats</option>';
-      return;
-    }
-    const chats = res.result || [];
-    sel.innerHTML = '<option value="">Select a chat / group…</option>';
-    for (const c of chats) {
-      const opt = document.createElement('option');
-      opt.value = c.id;
-      opt.textContent = (c.isGroup ? '👥 ' : '') + c.name;
-      opt.dataset.name = c.name;
-      sel.appendChild(opt);
-    }
-    $('engine-note').textContent = `${chats.length} chats available.`;
-  }
-
-  /** Load and render media statistics for the selected chat. */
-  async function loadEngineStats() {
-    const sel = $('engine-chat');
-    const chatId = sel.value;
-    $('engine-download').disabled = true;
-    $('engine-stats').classList.add('hidden');
-    $('engine-range').textContent = '';
-    if (!chatId) return;
-
-    const chatName = sel.selectedOptions[0]?.dataset.name || '';
-    $('engine-note').textContent = 'Scanning chat history…';
-    const res = await sendToTab({ type: 'WAMD_ENGINE_STATS', chatId, chatName });
-    if (!res || !res.ok) {
-      $('engine-note').textContent = `Could not read chat: ${res && res.error ? res.error : 'unknown error'}`;
-      return;
-    }
-    const s = res.result;
-    $('e-total').textContent = s.total;
-    $('e-image').textContent = s.counts.image || 0;
-    $('e-video').textContent = s.counts.video || 0;
-    $('e-audio').textContent = s.counts.audio || 0;
-    $('e-document').textContent = s.counts.document || 0;
-    $('engine-stats').classList.remove('hidden');
-
-    if (s.from && s.to) {
-      const fmt = (ms) => new Date(ms).toLocaleDateString();
-      $('engine-range').textContent = `Date range: ${fmt(s.from)} – ${fmt(s.to)}`;
-    }
-    $('engine-note').textContent = s.total
-      ? 'Adjust filters, then download.'
-      : 'No media found in this chat.';
-    $('engine-download').disabled = s.total === 0;
-  }
-
-  /** Kick off a Store-based download for the selected chat + filters. */
-  async function startEngineDownload() {
-    const sel = $('engine-chat');
-    const chatId = sel.value;
-    if (!chatId) return;
-    const chatName = sel.selectedOptions[0]?.dataset.name || '';
-    const types = Array.from(document.querySelectorAll('.e-type:checked')).map((c) => c.value);
-    if (!types.length) { $('engine-note').textContent = 'Select at least one media type.'; return; }
-
-    const from = $('e-from').value ? new Date(`${$('e-from').value}T00:00:00`).getTime() : null;
-    const to = $('e-to').value ? new Date(`${$('e-to').value}T23:59:59.999`).getTime() : null;
-    const limit = parseInt($('e-limit').value, 10) || 0;
-
-    const btn = $('engine-download');
-    btn.disabled = true;
-    btn.classList.add('busy');
-    $('engine-note').textContent = 'Downloading… this can take a while for large chats.';
-    try {
-      const res = await sendToTab({
-        type: 'WAMD_ENGINE_DOWNLOAD', chatId, chatName, types, from, to, limit
-      });
-      if (!res || !res.ok) {
-        $('engine-note').textContent = `Download failed: ${res && res.error ? res.error : 'unknown error'}`;
-      } else {
-        const r = res.result;
-        $('engine-note').textContent =
-          `Queued ${r.queued} file(s)` + (r.failed ? `, ${r.failed} failed` : '') + '. See the queue below.';
-      }
-    } finally {
-      btn.disabled = false;
-      btn.classList.remove('busy');
-      refreshQueue();
-    }
   }
 
   /**
@@ -369,8 +225,9 @@
 
   /**
    * Kick off a bulk download for the clicked filter button, applying the
-   * scope limit, optional date range and sender selection. Shows a busy
-   * spinner until the batch has been fully enqueued by the content script.
+   * scope limit, optional date range and sender selection. When the
+   * "auto-scroll" toggle is on it drives the auto-load path instead, which
+   * scrolls the chat to pull in and download older history.
    *
    * @param {HTMLButtonElement} btn  clicked button (data-filter attr)
    */
@@ -380,15 +237,22 @@
     const dateFrom = $('date-from').value || null;
     const dateTo = $('date-to').value || null;
     const senders = selectedSenders();
+    const autoScroll = $('auto-scroll').checked;
 
     btn.disabled = true;
     btn.classList.add('busy');
+    if (autoScroll) $('scan-note').textContent = 'Auto-scrolling and downloading… keep this tab open.';
     try {
       const res = await sendToTab({
-        type: 'WAMD_BULK_DOWNLOAD', filter, limit, dateFrom, dateTo, senders
+        type: autoScroll ? 'WAMD_AUTO_DOWNLOAD' : 'WAMD_BULK_DOWNLOAD',
+        filter, limit, dateFrom, dateTo, senders
       });
       if (!res || !res.ok) {
-        $('scan-note').textContent = 'Bulk download failed — is a chat open?';
+        $('scan-note').textContent = 'Download failed — is a chat open?';
+      } else if (autoScroll && res.result) {
+        const r = res.result;
+        $('scan-note').textContent =
+          `Auto-load done: ${r.queued} queued` + (r.documents ? `, ${r.documents} docs` : '') + '.';
       }
     } finally {
       btn.disabled = false;

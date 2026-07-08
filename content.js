@@ -337,13 +337,6 @@
    * @returns {Promise<object>} summary for the popup
    */
   async function bulkDownload(filter, limit, opts = {}) {
-    const KIND_FILTERS = {
-      images: ['image', 'gif', 'sticker'],
-      videos: ['video'],
-      documents: ['document'],
-      audio: ['audio', 'voice'],
-      all: null
-    };
     const kinds = KIND_FILTERS[filter] === undefined ? null : KIND_FILTERS[filter];
 
     let items = dom.scanChatMedia().filter((i) => !kinds || kinds.includes(i.kind));
@@ -428,6 +421,163 @@
     return true;
   }
 
+  /* ========================= Auto-scroll loader ========================= */
+
+  /** Media kinds each popup filter maps to (shared by bulk + auto-load). */
+  const KIND_FILTERS = {
+    images: ['image', 'gif', 'sticker'],
+    videos: ['video'],
+    documents: ['document'],
+    audio: ['audio', 'voice'],
+    all: null
+  };
+
+  /**
+   * Resolve the element that actually scrolls the conversation. WhatsApp's
+   * markup nests the scroll container, so we probe the selector hints and
+   * their descendants for the first genuinely scrollable node.
+   *
+   * @returns {Element|null}
+   */
+  function findScrollContainer() {
+    const hints = [
+      selectors.query('messagesScroller'),
+      selectors.query('messageList'),
+      selectors.query('conversationPanel')
+    ].filter(Boolean);
+    const scrollable = (el) => el && el.scrollHeight > el.clientHeight + 40 && el.clientHeight > 200;
+    for (const hint of hints) {
+      if (scrollable(hint)) return hint;
+      for (const el of hint.querySelectorAll('div')) {
+        if (scrollable(el)) return el;
+      }
+      // Also walk up: sometimes the scroller is an ancestor of the hint.
+      let p = hint.parentElement;
+      for (let i = 0; i < 4 && p; i++, p = p.parentElement) {
+        if (scrollable(p)) return p;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Apply the sender + date filters (shared with bulk download) to a set
+   * of scanned items.
+   *
+   * @param {object[]} items
+   * @param {{senders?: string[], from?: Date|null, to?: Date|null}} opts
+   * @returns {object[]}
+   */
+  function applyExtraFilters(items, opts) {
+    let out = items;
+    if (Array.isArray(opts.senders) && opts.senders.length) {
+      const allow = new Set(opts.senders);
+      out = out.filter((i) => allow.has(i.sender));
+    }
+    if (opts.from || opts.to) {
+      out = out.filter((i) => {
+        if (!(i.when instanceof Date)) return false;
+        if (opts.from && i.when < opts.from) return false;
+        if (opts.to && i.when > opts.to) return false;
+        return true;
+      });
+    }
+    return out;
+  }
+
+  /**
+   * Auto-load download: scroll the open conversation from newest to oldest,
+   * pausing so WhatsApp loads and decrypts media, and download each item as
+   * it becomes available. This reaches history that isn't on screen — the
+   * best we can do without WhatsApp's internal APIs.
+   *
+   * Limitations: images (auto-downloaded by WhatsApp on view) and documents
+   * work well; videos/voice notes only decrypt when opened/played, so most
+   * won't be captured by scrolling alone.
+   *
+   * @param {string} filter  images|videos|documents|audio|all
+   * @param {number} limit   max files to download (0 = no cap)
+   * @param {{dateFrom?: string, dateTo?: string, senders?: string[]}} opts
+   * @returns {Promise<object>} summary for the popup
+   */
+  async function autoLoadDownload(filter, limit, opts = {}) {
+    const container = findScrollContainer();
+    if (!container) {
+      toast('Could not find the message list to scroll', 'error');
+      return { queued: 0, documents: 0, error: 'no-scroll-container' };
+    }
+
+    const kinds = KIND_FILTERS[filter] === undefined ? null : KIND_FILTERS[filter];
+    const from = opts.dateFrom ? new Date(`${opts.dateFrom}T00:00:00`) : null;
+    const to = opts.dateTo ? new Date(`${opts.dateTo}T23:59:59.999`) : null;
+    const filterOpts = { senders: opts.senders, from, to };
+
+    const batchId = helpers.uid();      // suppresses per-file toasts/notifications
+    const seen = new Set();             // dedupe by blob src / doc message id
+    const deadline = Date.now() + 4 * 60 * 1000; // 4-minute safety cap
+    let queued = 0;
+    let documents = 0;
+    let stagnant = 0;
+    let lastMilestone = 0;
+
+    /** Download every newly-available item currently in view. */
+    const harvestVisible = async () => {
+      let items = dom.scanChatMedia().filter((i) => !kinds || kinds.includes(i.kind));
+      items = applyExtraFilters(items, filterOpts);
+      for (const it of items) {
+        if (limit > 0 && queued + documents >= limit) return;
+        if (it.kind === 'document') {
+          const key = `doc:${it.messageId || ''}`;
+          if (!it.messageId || seen.has(key)) continue;
+          seen.add(key);
+          if (clickDocumentDownload(it.el)) documents += 1;
+          await helpers.sleep(300);
+          continue;
+        }
+        const src = dom.getMediaSource(it.el);
+        if (!src || seen.has(src)) continue; // not decrypted yet, or already taken
+        seen.add(src);
+        const state = await downloadElement(it.el, it.kind, batchId);
+        if (state === 'queued' || state === 'duplicate' || state === 'large') queued += 1;
+      }
+    };
+
+    toast('Auto-load started — scrolling for history…');
+    // Start at the newest messages, then walk upward through history.
+    container.scrollTop = container.scrollHeight;
+    await helpers.sleep(700);
+
+    while (Date.now() < deadline) {
+      await harvestVisible();
+      if (limit > 0 && queued + documents >= limit) break;
+      const done = queued + documents;
+      if (done >= lastMilestone + 25) {
+        lastMilestone = done - (done % 25);
+        toast(`Auto-load: ${done} so far…`);
+      }
+
+      const prevTop = container.scrollTop;
+      const prevHeight = container.scrollHeight;
+      container.scrollTop = Math.max(0, prevTop - Math.round(container.clientHeight * 0.8));
+      await helpers.sleep(750); // allow older messages to load + decrypt
+
+      const grew = container.scrollHeight > prevHeight + 10;
+      const moved = Math.abs(container.scrollTop - prevTop) > 4;
+      if (!grew && !moved && container.scrollTop <= 4) {
+        stagnant += 1;
+        await helpers.sleep(600); // give history sync one more chance
+        if (stagnant >= 3) break;  // reached the top of the chat
+      } else {
+        stagnant = 0;
+      }
+    }
+    // One final sweep of whatever is now in view.
+    await harvestVisible();
+
+    toast(`Auto-load done: ${queued} media queued` + (documents ? `, ${documents} docs` : ''));
+    return { queued, documents, total: queued + documents };
+  }
+
   /* ============================== Toasts ============================== */
 
   /**
@@ -493,6 +643,16 @@
 
       case 'WAMD_BULK_DOWNLOAD':
         bulkDownload(msg.filter, msg.limit || 0, {
+          dateFrom: msg.dateFrom || null,
+          dateTo: msg.dateTo || null,
+          senders: msg.senders || null
+        })
+          .then((summary) => sendResponse({ ok: true, result: summary }))
+          .catch((err) => sendResponse({ ok: false, error: err.message }));
+        return true; // async
+
+      case 'WAMD_AUTO_DOWNLOAD':
+        autoLoadDownload(msg.filter, msg.limit || 0, {
           dateFrom: msg.dateFrom || null,
           dateTo: msg.dateTo || null,
           senders: msg.senders || null
