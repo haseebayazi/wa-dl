@@ -178,16 +178,24 @@
     if (el.tagName === 'IMG') {
       if (!String(el.src).startsWith('blob:')) return null;
       if (sel.matches(el, 'chatSticker')) return 'sticker';
-      // Tiny images are avatars / UI chrome, not chat media.
-      if ((el.naturalWidth || el.width || 0) < 48) return null;
+      // Exclude small images (contact avatars / emoji / UI chrome). Prefer
+      // the RENDERED width — avatars display ~40px while real chat images
+      // are much wider — and only reject when a width is actually known, so
+      // an image whose size hasn't resolved yet still counts.
+      const shown = el.getBoundingClientRect().width || el.width || 0;
+      const width = shown || el.naturalWidth || 0;
+      if (width && width < 56) return null;
       return 'image';
     }
     if (el.tagName === 'VIDEO') return 'video';
     if (el.tagName === 'AUDIO') {
-      // Voice notes and audio files both render <audio>; the play
-      // button testid distinguishes voice notes when present.
+      // Voice notes and audio files both render <audio>; a play button /
+      // waveform in the bubble marks a voice note, else it's an audio file.
       const bubble = sel.closest(el, 'messageContainer');
-      const isVoice = bubble ? !!sel.query('voiceNoteBubble', bubble) : false;
+      const isVoice = bubble
+        ? (!!sel.query('voiceNoteBubble', bubble) ||
+           !!bubble.querySelector('[aria-label*="voice" i]'))
+        : false;
       return isVoice ? 'voice' : 'audio';
     }
     return null;
