@@ -36,28 +36,41 @@
     conversationPanel: ['#main', 'div[id="main"]'],
 
     // Header of the open conversation (holds the chat name).
-    conversationHeader: ['#main header', 'header[data-testid="conversation-header"]'],
+    conversationHeader: [
+      '#main header',
+      'header[data-testid="conversation-header"]',
+      'div[data-testid="conversation-panel-wrapper"] header'
+    ],
 
     // Chat title text inside the conversation header.
     chatTitle: [
       '#main header span[title]',
+      '#main header span[dir="auto"][title]',
       'header [data-testid="conversation-info-header-chat-title"]',
-      '#main header span[dir="auto"]'
+      '#main header span[dir="auto"]',
+      'header span[title]'
     ],
 
     // Scrollable message list of the open conversation.
     messageList: [
       '#main [data-tab="8"]',
       '#main div[role="application"]',
-      '#main .copyable-area'
+      '#main div[tabindex="0"][role="region"]',
+      '#main .copyable-area',
+      '#main'
     ],
 
     /* ---------------- Messages ---------------- */
 
     // A single message bubble container. `data-id` carries the message id.
+    // Bare `div[data-id]` is kept as a lenient fallback; scans are already
+    // scoped to #main, and closest() only ever runs on in-conversation
+    // elements, so this won't pick up sidebar chat-list rows.
     messageContainer: [
       '#main div[data-id]',
-      'div[data-id][class*="message"]'
+      'div[data-id][class*="message"]',
+      'div[data-id]',
+      '[data-id]'
     ],
 
     // Incoming/outgoing markers (used to resolve the sender).

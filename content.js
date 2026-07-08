@@ -43,6 +43,79 @@
     startObserver();
     rescan();
     console.info('[WAMD] WA Media Downloader Pro ready');
+    // First-run self-diagnosis so layout problems are visible immediately.
+    logDiagnostics();
+  }
+
+  /**
+   * Build a structured report of what the content script currently sees on
+   * the page. Used to debug detection problems after WhatsApp DOM changes:
+   * the user runs it, copies the console output, and the selectors can be
+   * fixed against real markup instead of guesses.
+   *
+   * @returns {object}
+   */
+  function diagnose() {
+    const main = document.querySelector('#main') || document;
+    const scope = main === document ? document.body : main;
+
+    const attrValues = (attr) => {
+      const set = new Set();
+      for (const el of scope.querySelectorAll(`[${attr}]`)) {
+        const v = el.getAttribute(attr);
+        if (v) set.add(v);
+        if (set.size >= 60) break;
+      }
+      return [...set];
+    };
+
+    const blobImgs = Array.from(scope.querySelectorAll('img[src^="blob:"]'));
+    const sampleImgs = blobImgs.slice(0, 6).map((img) => ({
+      naturalW: img.naturalWidth,
+      renderedW: Math.round(img.getBoundingClientRect().width),
+      hasDataIdAncestor: !!img.closest('[data-id]'),
+      classifiedAs: dom.classifyMediaElement(img)
+    }));
+
+    return {
+      hasApp: !!document.querySelector('#app'),
+      hasMain: !!document.querySelector('#main'),
+      chatName: dom.getChatName(),
+      counts: {
+        dataId: scope.querySelectorAll('[data-id]').length,
+        imgTotal: scope.querySelectorAll('img').length,
+        imgBlob: blobImgs.length,
+        video: scope.querySelectorAll('video').length,
+        audio: scope.querySelectorAll('audio').length,
+        scanned: dom.scanChatMedia().length
+      },
+      sampleBlobImages: sampleImgs,
+      dataIcons: attrValues('data-icon'),
+      dataTestIds: attrValues('data-testid'),
+      selectorHealth: selectors.healthReport()
+    };
+  }
+
+  /** Print the diagnostic report to the console in a copy-friendly form. */
+  function logDiagnostics() {
+    try {
+      const report = diagnose();
+      console.info('[WAMD] Diagnostics — copy everything below to report a detection issue:');
+      console.info('[WAMD] ' + JSON.stringify(report, null, 2));
+    } catch (err) {
+      console.warn('[WAMD] Diagnostics failed:', err);
+    }
+  }
+
+  /** Last time diagnostics were logged, to avoid console spam. */
+  let lastDiagAt = 0;
+
+  /** Log diagnostics at most once every 5 seconds. */
+  function maybeLogDiagnostics() {
+    const now = Date.now();
+    if (now - lastDiagAt < 5000) return;
+    lastDiagAt = now;
+    logDiagnostics();
   }
 
   /**
@@ -395,8 +468,16 @@
    */
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     switch (msg && msg.type) {
+      case 'WAMD_DIAGNOSE':
+        rescan();
+        sendResponse({ ok: true, result: diagnose() });
+        return false;
+
       case 'WAMD_GET_STATE':
         rescan(); // fresh numbers when the popup opens
+        // Re-log diagnostics (throttled) so a chat opened after page load
+        // is captured — init() may have run on an empty conversation view.
+        maybeLogDiagnostics();
         sendResponse({
           ok: true,
           result: {
