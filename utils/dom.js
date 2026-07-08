@@ -176,16 +176,19 @@
     if (!sel.closest(el, 'messageContainer')) return null;
 
     if (el.tagName === 'IMG') {
-      if (!String(el.src).startsWith('blob:')) return null;
       if (sel.matches(el, 'chatSticker')) return 'sticker';
-      // Exclude small images (contact avatars / emoji / UI chrome). Prefer
-      // the RENDERED width — avatars display ~40px while real chat images
-      // are much wider — and only reject when a width is actually known, so
-      // an image whose size hasn't resolved yet still counts.
-      const shown = el.getBoundingClientRect().width || el.width || 0;
-      const width = shown || el.naturalWidth || 0;
-      if (width && width < 56) return null;
-      return 'image';
+      // Reliable path: WhatsApp tags every chat photo as image-thumb,
+      // whether or not it has been decrypted into a blob yet.
+      if (sel.matches(el, 'chatImageThumb')) return 'image';
+      // Fallback for older markup: a blob image that isn't avatar-sized.
+      // Prefer the RENDERED width (avatars show ~40px, real photos are
+      // wide); reject only when a width is actually known.
+      if (String(el.src).startsWith('blob:')) {
+        const shown = el.getBoundingClientRect().width || el.width || 0;
+        const width = shown || el.naturalWidth || 0;
+        if (!width || width >= 56) return 'image';
+      }
+      return null;
     }
     if (el.tagName === 'VIDEO') return 'video';
     if (el.tagName === 'AUDIO') {
@@ -249,14 +252,24 @@
       found.push({ el, kind, loaded, messageId, sender, when, caption });
     };
 
-    // Loaded media elements (blob: URLs present).
-    for (const img of listRoot.querySelectorAll('img[src^="blob:"]')) {
+    // Image messages. Scan ALL <img> (not just blobs): WhatsApp only turns
+    // a photo into a blob: URL once it scrolls into view, so an image is
+    // "loaded" (downloadable now) when its src is a blob, and reported as
+    // not-loaded otherwise so the count reflects the whole chat.
+    for (const img of listRoot.querySelectorAll('img')) {
       const kind = classifyMediaElement(img);
-      if (kind) push(img, kind, true);
+      if (!kind) continue;
+      const loaded = String(img.currentSrc || img.src || '').startsWith('blob:');
+      push(img, kind, loaded);
     }
     for (const video of listRoot.querySelectorAll('video')) {
       if (!sel.closest(video, 'messageContainer')) continue;
       push(video, 'video', !!getMediaSource(video));
+    }
+    // Video message thumbnails that haven't spawned a <video> element yet.
+    for (const thumb of sel.queryAll('videoThumb', listRoot)) {
+      const bubble = sel.closest(thumb, 'messageContainer');
+      if (bubble) push(bubble, 'video', false);
     }
     for (const audio of listRoot.querySelectorAll('audio')) {
       const kind = classifyMediaElement(audio);
@@ -288,20 +301,36 @@
    * Prefers the largest visible blob-backed <img>/<video> inside the
    * overlay, which is robust against carousel/thumbnail strips.
    *
+   * When the viewer container selector doesn't match (WhatsApp DOM
+   * change), falls back to a size heuristic: the opened viewer image is a
+   * blob element covering at least half the viewport, which is far larger
+   * than any in-chat thumbnail, so it can be identified without a selector.
+   *
    * @returns {{el: Element, kind: string}|null}
    */
   function getViewerMedia() {
     const viewer = getOpenViewer();
-    if (!viewer) return null;
+    const scope = viewer || document;
 
     let best = null;
     let bestArea = 0;
-    for (const el of viewer.querySelectorAll('img[src^="blob:"], video')) {
+    for (const el of scope.querySelectorAll('img[src^="blob:"], video')) {
       const rect = el.getBoundingClientRect();
       const area = rect.width * rect.height;
       if (area > bestArea) { bestArea = area; best = el; }
     }
-    if (!best || bestArea < 10000) return null; // ignore thumbnail strip
+    if (!best) return null;
+
+    if (viewer) {
+      if (bestArea < 10000) return null; // ignore thumbnail strip
+    } else {
+      // No viewer container matched — only treat a dominant, near-full-screen
+      // element as "the open viewer" so in-chat thumbnails aren't picked up.
+      const rect = best.getBoundingClientRect();
+      const bigEnough = rect.width >= window.innerWidth * 0.5 &&
+        rect.height >= window.innerHeight * 0.5;
+      if (!bigEnough) return null;
+    }
     return { el: best, kind: best.tagName === 'VIDEO' ? 'video' : 'image' };
   }
 

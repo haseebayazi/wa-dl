@@ -85,10 +85,28 @@
 
     /* ---------------- Media inside messages ---------------- */
 
-    // Chat images (thumbnails and loaded full images use blob: URLs).
+    // Chat image messages. WhatsApp renders every photo as an
+    // <img data-testid="image-thumb">; its src is a data:/encrypted
+    // placeholder until the image scrolls into view and is decrypted into
+    // a blob: URL. This role therefore matches BOTH loaded and unloaded
+    // photos so counts are honest — loaded state is judged separately.
+    chatImageThumb: [
+      'img[data-testid="image-thumb"]',
+      'img[data-testid~="image-thumb"]'
+    ],
+
+    // Legacy / generic chat image fallback (older markup): any blob image.
     chatImage: [
-      'img[src^="blob:"]',
-      'img[data-testid="image-thumb"]'
+      'img[data-testid="image-thumb"]',
+      'img[src^="blob:"]'
+    ],
+
+    // Video message thumbnail (before the <video> element is created) and
+    // the loaded inline player.
+    videoThumb: [
+      'div[data-testid="video-thumb"]',
+      'div[data-testid~="video-thumb"]',
+      '[data-testid="media-play"]'
     ],
 
     // Inline videos and GIF players.
@@ -132,12 +150,13 @@
       'div[role="button"][title] span[dir="auto"]'
     ],
 
-    // Caption text attached to an image/video message. WhatsApp renders
-    // it as selectable text inside the same bubble as the media.
+    // Caption text attached to an image/video message. WhatsApp tags the
+    // caption element with a data-testid that includes "image-caption".
     mediaCaption: [
+      '[data-testid~="image-caption"]',
+      '[data-testid="image-caption"]',
       'span[data-testid="media-caption"]',
       'div[class*="copyable-text"] span.selectable-text',
-      'span.selectable-text.copyable-text',
       'span.selectable-text span[dir="ltr"]',
       'span.selectable-text'
     ],
