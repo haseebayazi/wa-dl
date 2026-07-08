@@ -1,0 +1,202 @@
+/**
+ * options/options.css
+ * ------------------------------------------------------------------
+ * Settings page styling — same glassmorphism design language and
+ * theme tokens as the popup, laid out for a full browser tab.
+ * ------------------------------------------------------------------
+ */
+
+/* ===== Theme tokens (kept in sync with popup.css) ===== */
+
+:root {
+  --accent: #00a884;
+  --accent-2: #008069;
+  --bg: linear-gradient(160deg, #eef7f4 0%, #dcefe8 55%, #cfe9df 100%);
+  --card: rgba(255, 255, 255, 0.62);
+  --card-border: rgba(255, 255, 255, 0.8);
+  --text: #14211d;
+  --muted: #5c6f68;
+  --chip: rgba(255, 255, 255, 0.55);
+  --input: rgba(255, 255, 255, 0.75);
+  --shadow: 0 8px 24px rgba(20, 60, 50, 0.12);
+  --danger: #c0392b;
+}
+
+html[data-theme="dark"] {
+  --bg: linear-gradient(160deg, #0d1a17 0%, #10221d 55%, #0c1c18 100%);
+  --card: rgba(255, 255, 255, 0.06);
+  --card-border: rgba(255, 255, 255, 0.12);
+  --text: #e7f2ee;
+  --muted: #8fa8a0;
+  --chip: rgba(255, 255, 255, 0.08);
+  --input: rgba(255, 255, 255, 0.08);
+  --shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --danger: #ff7b6e;
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) {
+    --bg: linear-gradient(160deg, #0d1a17 0%, #10221d 55%, #0c1c18 100%);
+    --card: rgba(255, 255, 255, 0.06);
+    --card-border: rgba(255, 255, 255, 0.12);
+    --text: #e7f2ee;
+    --muted: #8fa8a0;
+    --chip: rgba(255, 255, 255, 0.08);
+    --input: rgba(255, 255, 255, 0.08);
+    --shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+    --danger: #ff7b6e;
+  }
+}
+
+/* ===== Layout ===== */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { min-height: 100%; background: var(--bg); }
+
+body {
+  min-height: 100vh;
+  font: 15px/1.6 "Segoe UI", system-ui, -apple-system, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+  background-attachment: fixed;
+}
+
+.shell {
+  max-width: 620px;
+  margin: 0 auto;
+  padding: 32px 20px 60px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.topbar { display: flex; align-items: center; gap: 14px; margin-bottom: 6px; }
+.topbar img { border-radius: 10px; }
+.topbar h1 { font-size: 20px; }
+.topbar h1 span { color: var(--accent); }
+
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+
+/* ===== Cards ===== */
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 18px;
+  padding: 20px;
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(16px) saturate(150%);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+}
+
+.card h2 {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--muted);
+  margin-bottom: 14px;
+}
+
+/* ===== Fields ===== */
+
+.field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+.field:last-child { margin-bottom: 0; }
+.field > span { font-weight: 600; font-size: 14px; }
+.field em, .toggle em { color: var(--muted); font-style: normal; font-weight: 400; font-size: 13px; }
+
+input[type="text"], select {
+  border: 1px solid var(--card-border);
+  background: var(--input);
+  color: var(--text);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+}
+input[type="text"]:focus, select:focus { border-color: var(--accent); }
+
+input[type="range"] { accent-color: var(--accent); }
+
+/* ===== Toggle switches ===== */
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+}
+.toggle:last-child { margin-bottom: 0; }
+.toggle input { display: none; }
+
+.slider {
+  flex: none;
+  width: 42px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--chip);
+  border: 1px solid var(--card-border);
+  position: relative;
+  transition: background 0.2s;
+}
+.slider::after {
+  content: "";
+  position: absolute;
+  top: 2px; left: 2px;
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.toggle input:checked + .slider {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+}
+.toggle input:checked + .slider::after { transform: translateX(18px); }
+
+/* ===== Buttons ===== */
+
+.actions { display: flex; gap: 10px; margin: 10px 0; flex-wrap: wrap; }
+
+.btn {
+  border: 1px solid var(--card-border);
+  background: var(--chip);
+  color: var(--text);
+  border-radius: 12px;
+  padding: 10px 14px;
+  font: 600 14px/1 inherit;
+  font-family: inherit;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.btn:hover { transform: translateY(-1px); box-shadow: var(--shadow); }
+.btn-danger { color: var(--danger); border-color: currentColor; background: transparent; }
+
+/* ===== Save status toast ===== */
+
+.save-status {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translate(-50%, 10px);
+  background: var(--accent);
+  color: #fff;
+  padding: 10px 18px;
+  border-radius: 999px;
+  font-weight: 600;
+  box-shadow: var(--shadow);
+  opacity: 0;
+  transition: opacity 0.25s, transform 0.25s;
+  pointer-events: none;
+}
+.save-status.visible { opacity: 1; transform: translate(-50%, 0); }
+
+@media (prefers-reduced-motion: reduce) {
+  .slider::after, .btn, .save-status { transition: none; }
+}

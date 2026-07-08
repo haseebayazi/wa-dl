@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<!--
+  popup/popup.html
+  Toolbar popup of WA Media Downloader Pro: current-chat media browser,
+  bulk downloader, queue monitor, statistics and history search.
+  Logic lives in popup.js; shared utilities are loaded first.
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="color-scheme" content="light dark" />
+  <title>WA Media Downloader Pro</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <main class="shell">
+
+    <!-- Header -->
+    <header class="topbar">
+      <div class="brand">
+        <img src="../assets/icons/icon32.png" alt="" width="26" height="26" />
+        <div>
+          <h1>WA Media Downloader <span>Pro</span></h1>
+          <p id="chat-name" class="muted">No chat detected</p>
+        </div>
+      </div>
+      <button id="btn-settings" class="icon-btn" title="Settings" aria-label="Settings">
+        <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm9.4 4a7.8 7.8 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7.6 7.6 0 0 0-2-1.2L16.5 3h-4l-.4 2.6a7.6 7.6 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6a7.9 7.9 0 0 0 0 2.4l-2 1.6 2 3.4 2.4-1a7.6 7.6 0 0 0 2 1.2l.4 2.6h4l.4-2.6a7.6 7.6 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.06-.4.1-.8.1-1.2Z"/></svg>
+      </button>
+    </header>
+
+    <!-- Shown when the active tab is not WhatsApp Web -->
+    <section id="view-offsite" class="card hidden">
+      <p>This extension works on <strong>WhatsApp Web</strong>.</p>
+      <button id="btn-open-wa" class="btn btn-primary">Open web.whatsapp.com</button>
+    </section>
+
+    <!-- Main view (WhatsApp tab active) -->
+    <div id="view-main" class="hidden">
+
+      <!-- Detected media counts -->
+      <section class="card">
+        <h2>Detected media <button id="btn-refresh" class="icon-btn" title="Refresh">⟳</button></h2>
+        <div class="chips" id="media-chips">
+          <span class="chip" data-kind="image">🖼 <b id="c-image">0</b> Images</span>
+          <span class="chip" data-kind="video">🎬 <b id="c-video">0</b> Videos</span>
+          <span class="chip" data-kind="audio">🎵 <b id="c-audio">0</b> Audio</span>
+          <span class="chip" data-kind="voice">🎙 <b id="c-voice">0</b> Voice</span>
+          <span class="chip" data-kind="document">📄 <b id="c-document">0</b> Docs</span>
+          <span class="chip" data-kind="sticker">✨ <b id="c-sticker">0</b> Stickers</span>
+        </div>
+        <p id="scan-note" class="muted small"></p>
+        <p id="health-warning" class="warning small hidden"></p>
+      </section>
+
+      <!-- Bulk downloader -->
+      <section class="card">
+        <h2>Bulk download</h2>
+        <div class="row">
+          <label class="small" for="scope">Scope</label>
+          <select id="scope">
+            <option value="0">Everything loaded</option>
+            <option value="50">Last 50</option>
+            <option value="100">Last 100</option>
+          </select>
+        </div>
+        <div class="btn-grid">
+          <button class="btn" data-filter="images">🖼 Images</button>
+          <button class="btn" data-filter="videos">🎬 Videos</button>
+          <button class="btn" data-filter="documents">📄 Documents</button>
+          <button class="btn" data-filter="audio">🎵 Audio</button>
+          <button class="btn btn-primary btn-wide" data-filter="all">⬇ Download everything</button>
+        </div>
+        <p class="muted small">Only media WhatsApp has already loaded (scroll the chat to load more).</p>
+      </section>
+
+      <!-- Queue -->
+      <section class="card">
+        <h2>Queue <span id="queue-summary" class="muted small"></span></h2>
+        <div id="queue-progress" class="progress hidden"><div id="queue-progress-bar"></div></div>
+        <ul id="queue-list" class="list"></ul>
+        <div class="row end">
+          <button id="btn-clear-queue" class="btn btn-ghost small-btn">Clear finished</button>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- Statistics (always visible) -->
+    <section class="card">
+      <h2>Statistics</h2>
+      <div class="stat-grid" id="stats">
+        <div><b id="s-total">0</b><span>Total</span></div>
+        <div><b id="s-images">0</b><span>Images</span></div>
+        <div><b id="s-videos">0</b><span>Videos</span></div>
+        <div><b id="s-audio">0</b><span>Audio</span></div>
+        <div><b id="s-documents">0</b><span>Docs</span></div>
+        <div><b id="s-bytes">0 B</b><span>Downloaded</span></div>
+      </div>
+      <p class="muted small" id="s-last"></p>
+    </section>
+
+    <!-- History search -->
+    <section class="card">
+      <h2>Search downloads</h2>
+      <input id="search" type="search" placeholder="Filename or chat name…" autocomplete="off" />
+      <ul id="search-results" class="list"></ul>
+    </section>
+
+    <footer class="muted small footer">
+      100% local · no tracking · no external servers
+    </footer>
+  </main>
+
+  <script src="../utils/helpers.js"></script>
+  <script src="../utils/storage.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

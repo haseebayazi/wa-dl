@@ -1,0 +1,119 @@
+/**
+ * styles/content.css
+ * ------------------------------------------------------------------
+ * In-page UI for WA Media Downloader Pro: the floating download
+ * button (FAB) shown over the media viewer, and toast notifications.
+ * Everything is prefixed `wamd-` and uses maximal z-index layering so
+ * WhatsApp's own styles are never affected.
+ * ------------------------------------------------------------------
+ */
+
+/* ===== Floating download button (bottom-right of the viewer) ===== */
+
+.wamd-fab {
+  position: fixed;
+  right: 28px;
+  bottom: 28px;
+  z-index: 2147483646;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 18px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 999px;
+  font: 600 14px/1 "Segoe UI", system-ui, -apple-system, sans-serif;
+  letter-spacing: 0.2px;
+  color: #fff;
+  cursor: pointer;
+
+  /* Glassmorphism over any media */
+  background: linear-gradient(135deg, rgba(0, 168, 132, 0.85), rgba(0, 128, 105, 0.85));
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+
+  /* Hidden by default; .wamd-fab--visible animates it in */
+  opacity: 0;
+  transform: translateY(16px) scale(0.9);
+  pointer-events: none;
+  transition: opacity 0.25s ease, transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1),
+              box-shadow 0.2s ease;
+}
+
+.wamd-fab--visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+.wamd-fab:hover {
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  transform: translateY(-2px) scale(1.03);
+}
+
+.wamd-fab:active {
+  transform: translateY(0) scale(0.97);
+}
+
+.wamd-fab svg {
+  flex: none;
+}
+
+/* Busy state: pulse while fetching/encoding the media */
+.wamd-fab--busy {
+  pointer-events: none;
+  animation: wamd-pulse 1s ease-in-out infinite;
+}
+
+@keyframes wamd-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+/* ===== Toast notifications (stack above the FAB) ===== */
+
+.wamd-toast {
+  position: fixed;
+  right: 28px;
+  bottom: 92px;
+  z-index: 2147483647;
+  max-width: 340px;
+  padding: 12px 16px;
+  border-radius: 14px;
+  font: 500 13px/1.45 "Segoe UI", system-ui, -apple-system, sans-serif;
+  color: #eaf5f1;
+  background: rgba(24, 32, 34, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  pointer-events: none;
+}
+
+.wamd-toast--visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.wamd-toast--error {
+  border-color: rgba(255, 99, 99, 0.5);
+  background: rgba(58, 22, 22, 0.92);
+  color: #ffd9d9;
+}
+
+/* Respect users who prefer reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .wamd-fab,
+  .wamd-toast {
+    transition: opacity 0.15s linear;
+    transform: none;
+  }
+  .wamd-fab--busy {
+    animation: none;
+    opacity: 0.7;
+  }
+}

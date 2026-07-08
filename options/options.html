@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<!--
+  options/options.html
+  Full settings page of WA Media Downloader Pro. Every control maps
+  1:1 to a key in WAMD.storage.DEFAULT_SETTINGS; options.js handles
+  load/save and the maintenance actions at the bottom.
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
+  <title>WA Media Downloader Pro — Settings</title>
+  <link rel="stylesheet" href="options.css" />
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <img src="../assets/icons/icon48.png" alt="" width="40" height="40" />
+      <div>
+        <h1>WA Media Downloader <span>Pro</span></h1>
+        <p class="muted">Settings — everything is stored locally / in your browser sync profile.</p>
+      </div>
+    </header>
+
+    <!-- Downloads -->
+    <section class="card">
+      <h2>Downloads</h2>
+
+      <label class="field">
+        <span>Download folder <em>(inside your browser's download directory)</em></span>
+        <input id="downloadFolder" type="text" placeholder="WhatsApp" maxlength="60" />
+      </label>
+
+      <label class="field">
+        <span>File naming format</span>
+        <select id="namingStyle">
+          <option value="chat_datetime">ChatName_YYYY-MM-DD_HH-MM-SS.jpg</option>
+          <option value="sender_messageid">Sender_MessageID.mp4</option>
+        </select>
+      </label>
+
+      <label class="toggle">
+        <input id="organizeFolders" type="checkbox" />
+        <span class="slider"></span>
+        <span>Organize into folders <em>WhatsApp/Chat/Images…</em></span>
+      </label>
+
+      <label class="toggle">
+        <input id="autoDownload" type="checkbox" />
+        <span class="slider"></span>
+        <span>Auto-download media opened in the viewer</span>
+      </label>
+
+      <label class="toggle">
+        <input id="duplicateDetection" type="checkbox" />
+        <span class="slider"></span>
+        <span>Skip duplicates <em>(content-hash based)</em></span>
+      </label>
+
+      <label class="field">
+        <span>Maximum concurrent downloads: <b id="maxConcurrentValue">3</b></span>
+        <input id="maxConcurrent" type="range" min="1" max="8" step="1" />
+      </label>
+    </section>
+
+    <!-- Interface -->
+    <section class="card">
+      <h2>Interface</h2>
+
+      <label class="field">
+        <span>Theme</span>
+        <select id="darkMode">
+          <option value="auto">Match system</option>
+          <option value="dark">Dark</option>
+          <option value="light">Light</option>
+        </select>
+      </label>
+
+      <label class="toggle">
+        <input id="notifications" type="checkbox" />
+        <span class="slider"></span>
+        <span>Desktop notifications <em>(completed / failed / duplicates / queue done)</em></span>
+      </label>
+    </section>
+
+    <!-- Data -->
+    <section class="card">
+      <h2>Data &amp; storage</h2>
+      <p class="muted" id="storage-info">Calculating storage usage…</p>
+      <div class="actions">
+        <button id="btn-clear-history" class="btn btn-danger">Clear download history</button>
+        <button id="btn-reset-stats" class="btn btn-danger">Reset statistics</button>
+      </div>
+      <p class="muted small">Clearing history also resets duplicate detection — previously
+        downloaded files will be downloaded again.</p>
+    </section>
+
+    <!-- Privacy -->
+    <section class="card">
+      <h2>Privacy</h2>
+      <p class="muted">This extension never uploads anything. There is no analytics, no
+        tracking and no external server. Media is read from your open WhatsApp Web tab
+        and saved straight to your disk.</p>
+    </section>
+
+    <p id="save-status" class="save-status" role="status"></p>
+  </main>
+
+  <script src="../utils/helpers.js"></script>
+  <script src="../utils/storage.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>

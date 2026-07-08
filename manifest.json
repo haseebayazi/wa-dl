@@ -1,0 +1,66 @@
+{
+  "manifest_version": 3,
+  "name": "WA Media Downloader Pro",
+  "description": "Download images, videos, voice notes, documents, GIFs and stickers from WhatsApp Web. 100% local, no tracking.",
+  "version": "1.0.0",
+  "minimum_chrome_version": "116",
+
+  "icons": {
+    "16": "assets/icons/icon16.png",
+    "32": "assets/icons/icon32.png",
+    "48": "assets/icons/icon48.png",
+    "128": "assets/icons/icon128.png"
+  },
+
+  "background": {
+    "service_worker": "background.js"
+  },
+
+  "action": {
+    "default_title": "WA Media Downloader Pro",
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "assets/icons/icon16.png",
+      "32": "assets/icons/icon32.png",
+      "48": "assets/icons/icon48.png",
+      "128": "assets/icons/icon128.png"
+    }
+  },
+
+  "options_page": "options/options.html",
+
+  "permissions": [
+    "downloads",
+    "storage",
+    "activeTab",
+    "scripting",
+    "tabs",
+    "notifications"
+  ],
+
+  "host_permissions": [
+    "https://web.whatsapp.com/*"
+  ],
+
+  "content_scripts": [
+    {
+      "matches": ["https://web.whatsapp.com/*"],
+      "js": [
+        "utils/selectors.js",
+        "utils/helpers.js",
+        "utils/storage.js",
+        "utils/dom.js",
+        "utils/download.js",
+        "content.js"
+      ],
+      "css": ["styles/content.css"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://web.whatsapp.com/*"],
+      "js": ["inject.js"],
+      "world": "MAIN",
+      "run_at": "document_idle"
+    }
+  ]
+}
