@@ -124,6 +124,30 @@ wa-media-downloader/
 
 ## How it works
 
+### Engine mode (primary) — download a whole chat/group
+
+The popup's **Download by chat** card talks to WhatsApp Web's own internal
+engine through the bundled, open-source [`@wppconnect/wa-js`](https://github.com/wppconnect-team/wa-js)
+library (Apache-2.0, vendored in `vendor/`). A MAIN-world bridge
+(`wa-bridge.js`) exposes three capabilities to an isolated-world relay
+(`wa-engine.js`):
+
+1. **List chats** — every conversation, not just the open one.
+2. **Collect media** — walks the loaded chat history and returns image /
+   video / audio / document messages with timestamps and captions (no
+   scrolling required), which drives the per-chat statistics and date range.
+3. **Download media** — asks WhatsApp to decrypt each selected message; the
+   resulting blob is named with your rules and pushed through the same
+   background download queue as everything else.
+
+> ⚠️ Engine mode relies on WhatsApp's **undocumented internal APIs**. They
+> are powerful (full-history export) but can change without notice and using
+> them may be against WhatsApp's Terms of Service — use it on your own
+> account and at your own discretion. When WhatsApp changes internals,
+> update the vendored `wa-js` bundle to a newer release.
+
+### DOM mode (fallback) — the open chat only
+
 1. **Detection.** WhatsApp Web decrypts media client-side and exposes it as
    `blob:` URLs on `<img>`, `<video>` and `<audio>` elements. A single
    debounced `MutationObserver` on `document.body` schedules re-scans; the
@@ -250,11 +274,13 @@ WhatsApp Web's DOM is not a public API. This project isolates that risk:
   `documentBubble`, `voiceNoteBubble`, `statusViewer`, `profilePhotoLarge`.
 - Relatively stable (public message attributes): `data-id`,
   `data-pre-plain-text`, `blob:` media sources.
-- The extension **degrades gracefully**: unmatched selectors simply disable
+- The DOM layer **degrades gracefully**: unmatched selectors simply disable
   the corresponding feature, `selectors.healthReport()` feeds a warning banner
   in the popup, and no code path throws on a missing element.
-- No undocumented WhatsApp internals (webpack modules, Store objects) are
-  used anywhere — only the rendered DOM.
+- **Engine mode** (the `Download by chat` card) does use WhatsApp internals
+  via the vendored `wa-js` bundle. When a WhatsApp update breaks it, bump
+  `vendor/wppconnect-wa.js` to a newer `@wppconnect/wa-js` release rather than
+  editing selectors.
 
 ## Privacy
 
