@@ -202,21 +202,30 @@
     const from = $('e-from').value ? new Date(`${$('e-from').value}T00:00:00`).getTime() : null;
     const to = $('e-to').value ? new Date(`${$('e-to').value}T23:59:59.999`).getTime() : null;
     const limit = parseInt($('e-limit').value, 10) || 0;
+    const naming = {
+      useCaption: $('n-caption').checked,
+      appendOrig: $('n-orig').checked,
+      useDate: $('n-date').checked
+    };
+    const zip = $('n-zip').checked;
 
     const btn = $('engine-download');
     btn.disabled = true;
     btn.classList.add('busy');
-    $('engine-note').textContent = 'Downloading… large chats can take a while. Keep this popup open.';
+    $('engine-note').textContent = zip
+      ? 'Building ZIP… scanning history and decrypting media. Keep this tab open — this can take a while.'
+      : 'Downloading… large chats can take a while. Keep this popup open.';
     try {
       const res = await sendToTab({
-        type: 'WAMD_ENGINE_DOWNLOAD', chatId, chatName, types, from, to, limit
+        type: 'WAMD_ENGINE_DOWNLOAD', chatId, chatName, types, from, to, limit, naming, zip
       });
       if (!res || !res.ok) {
         $('engine-note').textContent = `Download failed: ${res && res.error ? res.error : 'unknown error'}`;
       } else {
         const r = res.result;
-        $('engine-note').textContent =
-          `Queued ${r.queued} file(s)` + (r.failed ? `, ${r.failed} unavailable/failed` : '') + '. See the queue below.';
+        $('engine-note').textContent = zip
+          ? `ZIP saved: ${r.queued} file(s)` + (r.failed ? `, ${r.failed} unavailable/expired` : '') + '.'
+          : `Queued ${r.queued} file(s)` + (r.failed ? `, ${r.failed} unavailable/expired` : '') + '. See the queue below.';
       }
     } finally {
       btn.disabled = false;

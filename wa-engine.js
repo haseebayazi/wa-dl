@@ -96,19 +96,55 @@
     return true;
   };
 
-  async function runDownload(opts) {
-    const { chatId, chatName, types, from, to, limit } = opts;
-    if (cache.chatId !== chatId || !cache.items.length) await getStats(chatId, chatName);
+  /**
+   * Build a download path from the naming options (caption / date /
+   * original filename), keeping the folder organization setting.
+   *
+   * @param {object} settings @param {object} dto @param {object} naming
+   * @param {number} idx @param {string} chatName @param {string} ext
+   */
+  function engineFilename(settings, dto, naming, idx, chatName, ext) {
+    const h = helpers;
+    naming = naming || {};
+    const when = dto.t ? new Date(dto.t * 1000) : new Date();
+    const parts = [];
+    if (naming.useCaption && dto.caption) {
+      parts.push(h.sanitizeFilename(dto.caption, 80));
+      if (naming.useDate) parts.push(h.timestampSlug(when));
+    } else {
+      parts.push(h.sanitizeFilename(chatName || 'Chat'));
+      parts.push(h.timestampSlug(when));
+    }
+    parts.push(String(idx).padStart(4, '0'));
+    if (naming.appendOrig && dto.filename) {
+      const orig = h.sanitizeFilename(dto.filename.replace(/\.[^.]+$/, ''), 80);
+      if (orig && !parts.join('_').includes(orig)) parts.push(orig);
+    }
+    const base = `${parts.join('_')}.${ext}`;
+    const segs = [h.sanitizeFilename(settings.downloadFolder || 'WhatsApp')];
+    if (settings.organizeFolders) segs.push(h.sanitizeFilename(chatName || 'Chat'), h.folderForKind(dto.kind));
+    segs.push(base);
+    return segs.join('/');
+  }
 
+  /** Resolve the full media list for a chat (whole history) and filter it. */
+  async function selectItems({ chatId, chatName, types, from, to, limit }) {
+    const { items } = await call('collectMediaFull', { chatId }, 600000);
+    cache = { chatId, chatName: chatName || '', items };
     const allow = new Set();
     (types && types.length ? types : Object.keys(TYPE_TO_KINDS))
       .forEach((t) => (TYPE_TO_KINDS[t] || []).forEach((k) => allow.add(k)));
+    let out = items.filter((it) => allow.has(it.kind));
+    if (from || to) out = out.filter((it) => inRange(it.t, from, to));
+    out.sort((a, b) => a.t - b.t);
+    if (limit && limit > 0) out = out.slice(0, limit);
+    return { items: out, allow: [...allow] };
+  }
 
-    let items = cache.items.filter((it) => allow.has(it.kind));
-    if (from || to) items = items.filter((it) => inRange(it.t, from, to));
-    items.sort((a, b) => a.t - b.t);
-    if (limit && limit > 0) items = items.slice(0, limit);
-
+  /** Individual-file download through the background queue. */
+  async function runDownload(opts) {
+    const { chatName, naming } = opts;
+    const { items } = await selectItems(opts);
     const settings = await storage.getSettings();
     const name = chatName || cache.chatName || 'Chat';
     const batchId = helpers.uid();
@@ -116,22 +152,14 @@
 
     let queued = 0;
     let failed = 0;
+    let idx = 0;
     for (const it of items) {
+      idx += 1;
       try {
         const media = await call('downloadOne', { id: it.id, mimetype: it.mimetype });
         if ((media.size || 0) > MAX_MESSAGE_BYTES) { failed += 1; continue; }
         const ext = helpers.extensionForMime(media.mimetype || it.mimetype) || 'bin';
-        const when = it.t ? new Date(it.t * 1000) : new Date();
-        const docBase = it.filename ? it.filename.replace(/\.[^.]+$/, '') : '';
-        const filename = download.buildFilename(settings, {
-          kind: it.kind,
-          chatName: name,
-          sender: it.sender || 'Unknown',
-          messageId: it.id,
-          when,
-          caption: it.caption || docBase || null,
-          ext
-        });
+        const filename = engineFilename(settings, it, naming, idx, name, ext);
         const res = await send({
           type: 'WAMD_ENQUEUE',
           payload: {
@@ -158,6 +186,19 @@
     return { queued, failed, total: items.length };
   }
 
+  /** ZIP download: the bridge decrypts, zips and saves in the page. */
+  async function runZip(opts) {
+    const { chatId, chatName, types, from, to, limit, naming } = opts;
+    const allow = new Set();
+    (types && types.length ? types : Object.keys(TYPE_TO_KINDS))
+      .forEach((t) => (TYPE_TO_KINDS[t] || []).forEach((k) => allow.add(k)));
+    const res = await call('downloadZip', {
+      chatId, chatName: chatName || cache.chatName || 'Chat',
+      kinds: [...allow], from, to, limit, naming
+    }, 900000);
+    return { queued: res.count || 0, failed: res.failed || 0, zip: true };
+  }
+
   /* ------------------------------ router ------------------------------ */
 
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
@@ -175,7 +216,7 @@
       case 'WAMD_ENGINE_STATS':
         return respond(getStats(msg.chatId, msg.chatName));
       case 'WAMD_ENGINE_DOWNLOAD':
-        return respond(runDownload(msg));
+        return respond(msg.zip ? runZip(msg) : runDownload(msg));
       default:
         return false;
     }
