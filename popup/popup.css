@@ -280,6 +280,20 @@ select:focus, input:focus { border-color: var(--accent); }
 #e-limit { max-width: 90px; flex: none; }
 #engine-download { margin-top: 10px; }
 
+/* ===== Auto-scroll toggle ===== */
+
+.autoload {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 12px;
+  cursor: pointer;
+  line-height: 1.35;
+}
+.autoload input { margin-top: 2px; flex: none; accent-color: var(--accent); }
+.autoload em { color: var(--muted); font-style: normal; }
+
 /* ===== Progress bar ===== */
 
 .progress {

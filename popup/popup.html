@@ -40,10 +40,10 @@
 
       <!-- Engine: full-history download by chat/group -->
       <section class="card" id="engine-card">
-        <h2>Download by chat <span id="engine-status" class="badge">connecting…</span></h2>
+        <h2>Download by chat <span id="engine-status" class="badge">starting…</span></h2>
         <div class="row">
           <label class="small" for="engine-chat">Chat / group</label>
-          <select id="engine-chat"><option value="">Loading chats…</option></select>
+          <select id="engine-chat"><option value="">—</option></select>
           <button id="engine-reload-chats" class="mini" title="Reload chat list">⟳</button>
         </div>
 
@@ -117,6 +117,10 @@
           <summary class="small">Filter by sender <span id="sender-summary" class="muted"></span></summary>
           <div id="sender-list" class="sender-list"></div>
         </details>
+        <label class="autoload">
+          <input type="checkbox" id="auto-scroll" />
+          <span>Auto-scroll to load older history first <em>(slower; grabs images/PDFs it hasn't loaded yet)</em></span>
+        </label>
         <div class="btn-grid">
           <button class="btn" data-filter="images">🖼 Images</button>
           <button class="btn" data-filter="videos">🎬 Videos</button>

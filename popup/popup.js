@@ -51,42 +51,78 @@
 
   /* ============================ Engine ============================ */
 
-  /** Poll the engine status until it is ready (or errors), then load chats. */
+  /**
+   * Boot the Store engine: inject wa-js + the page bridge into the tab's
+   * MAIN world (on demand, now that WhatsApp is loaded — this timing is
+   * what lets wa-js hook WhatsApp's internals), then wait for readiness
+   * and load the chat list.
+   */
   async function engineInit() {
     wireEngineEvents();
-    const ok = await waitForEngine(24); // ~48s max
-    if (ok) await loadEngineChats();
+    const injected = await ensureEngineInjected();
+    if (!injected) {
+      setBadge('unavailable', 'err');
+      $('engine-note').textContent = 'Could not inject the engine. Reload the WhatsApp tab and reopen.';
+      return;
+    }
+    if (await waitForEngine(20)) await loadEngineChats();
   }
 
   /**
-   * Ask the content-script relay for engine status. Retries while the
-   * engine is still connecting to WhatsApp.
+   * Inject the vendor library and page bridge into the MAIN world via
+   * chrome.scripting, skipping either if it is already present.
+   *
+   * @returns {Promise<boolean>} whether injection succeeded
+   */
+  async function ensureEngineInjected() {
+    if (waTabId === null || !chrome.scripting) return false;
+    const runInMain = async (func) => {
+      try {
+        const [res] = await chrome.scripting.executeScript({
+          target: { tabId: waTabId }, world: 'MAIN', func
+        });
+        return res && res.result;
+      } catch (_) { return undefined; }
+    };
+    const injectFile = (file) => chrome.scripting.executeScript({
+      target: { tabId: waTabId }, world: 'MAIN', files: [file]
+    });
+
+    try {
+      if (!(await runInMain(() => !!window.WPP))) {
+        await injectFile('vendor/wppconnect-wa.js');
+      }
+      if (!(await runInMain(() => !!window.__WAMD_BRIDGE__))) {
+        await injectFile('wa-bridge.js');
+      }
+      return true;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  /** Set the engine status badge text + state class. */
+  function setBadge(text, cls) {
+    const b = $('engine-status');
+    b.textContent = text;
+    b.className = `badge${cls ? ' ' + cls : ''}`;
+  }
+
+  /**
+   * Poll engine status until ready (wa-js needs a moment to connect).
    *
    * @param {number} tries
-   * @returns {Promise<boolean>} true once ready
+   * @returns {Promise<boolean>}
    */
   async function waitForEngine(tries) {
-    const badge = $('engine-status');
     for (let i = 0; i < tries; i++) {
       const res = await sendToTab({ type: 'WAMD_ENGINE_STATUS' });
       const s = res && res.ok ? res.result : null;
-      if (s && s.readyState === 'ready') {
-        badge.textContent = 'connected';
-        badge.className = 'badge ok';
-        return true;
-      }
-      if (s && s.readyState === 'error') {
-        badge.textContent = 'unavailable';
-        badge.className = 'badge err';
-        $('engine-note').textContent = `Engine error: ${s.error || 'unknown'}. Reload the WhatsApp tab and try again.`;
-        return false;
-      }
-      badge.textContent = 'connecting…';
-      badge.className = 'badge';
-      await new Promise((r) => setTimeout(r, 2000));
+      if (s && s.readyState === 'ready') { setBadge('connected', 'ok'); return true; }
+      setBadge('connecting…', '');
+      await new Promise((r) => setTimeout(r, 1500));
     }
-    badge.textContent = 'timed out';
-    badge.className = 'badge err';
+    setBadge('timed out', 'err');
     $('engine-note').textContent = 'Engine did not connect. Make sure you are logged into WhatsApp Web, then reload the tab.';
     return false;
   }
@@ -108,6 +144,7 @@
     const res = await sendToTab({ type: 'WAMD_ENGINE_CHATS' });
     if (!res || !res.ok) {
       sel.innerHTML = '<option value="">Could not load chats</option>';
+      $('engine-note').textContent = res && res.error ? res.error : 'Chat list failed.';
       return;
     }
     const chats = res.result || [];
@@ -131,7 +168,7 @@
     $('engine-range').textContent = '';
     if (!chatId) return;
 
-    const chatName = sel.selectedOptions[0]?.dataset.name || '';
+    const chatName = sel.selectedOptions[0] ? sel.selectedOptions[0].dataset.name : '';
     $('engine-note').textContent = 'Scanning chat history…';
     const res = await sendToTab({ type: 'WAMD_ENGINE_STATS', chatId, chatName });
     if (!res || !res.ok) {
@@ -145,14 +182,11 @@
     $('e-audio').textContent = s.counts.audio || 0;
     $('e-document').textContent = s.counts.document || 0;
     $('engine-stats').classList.remove('hidden');
-
     if (s.from && s.to) {
       const fmt = (ms) => new Date(ms).toLocaleDateString();
       $('engine-range').textContent = `Date range: ${fmt(s.from)} – ${fmt(s.to)}`;
     }
-    $('engine-note').textContent = s.total
-      ? 'Adjust filters, then download.'
-      : 'No media found in this chat.';
+    $('engine-note').textContent = s.total ? 'Adjust filters, then download.' : 'No media found in this chat.';
     $('engine-download').disabled = s.total === 0;
   }
 
@@ -161,7 +195,7 @@
     const sel = $('engine-chat');
     const chatId = sel.value;
     if (!chatId) return;
-    const chatName = sel.selectedOptions[0]?.dataset.name || '';
+    const chatName = sel.selectedOptions[0] ? sel.selectedOptions[0].dataset.name : '';
     const types = Array.from(document.querySelectorAll('.e-type:checked')).map((c) => c.value);
     if (!types.length) { $('engine-note').textContent = 'Select at least one media type.'; return; }
 
@@ -172,7 +206,7 @@
     const btn = $('engine-download');
     btn.disabled = true;
     btn.classList.add('busy');
-    $('engine-note').textContent = 'Downloading… this can take a while for large chats.';
+    $('engine-note').textContent = 'Downloading… large chats can take a while. Keep this popup open.';
     try {
       const res = await sendToTab({
         type: 'WAMD_ENGINE_DOWNLOAD', chatId, chatName, types, from, to, limit
@@ -182,7 +216,7 @@
       } else {
         const r = res.result;
         $('engine-note').textContent =
-          `Queued ${r.queued} file(s)` + (r.failed ? `, ${r.failed} failed` : '') + '. See the queue below.';
+          `Queued ${r.queued} file(s)` + (r.failed ? `, ${r.failed} unavailable/failed` : '') + '. See the queue below.';
       }
     } finally {
       btn.disabled = false;
@@ -369,8 +403,9 @@
 
   /**
    * Kick off a bulk download for the clicked filter button, applying the
-   * scope limit, optional date range and sender selection. Shows a busy
-   * spinner until the batch has been fully enqueued by the content script.
+   * scope limit, optional date range and sender selection. When the
+   * "auto-scroll" toggle is on it drives the auto-load path instead, which
+   * scrolls the chat to pull in and download older history.
    *
    * @param {HTMLButtonElement} btn  clicked button (data-filter attr)
    */
@@ -380,15 +415,22 @@
     const dateFrom = $('date-from').value || null;
     const dateTo = $('date-to').value || null;
     const senders = selectedSenders();
+    const autoScroll = $('auto-scroll').checked;
 
     btn.disabled = true;
     btn.classList.add('busy');
+    if (autoScroll) $('scan-note').textContent = 'Auto-scrolling and downloading… keep this tab open.';
     try {
       const res = await sendToTab({
-        type: 'WAMD_BULK_DOWNLOAD', filter, limit, dateFrom, dateTo, senders
+        type: autoScroll ? 'WAMD_AUTO_DOWNLOAD' : 'WAMD_BULK_DOWNLOAD',
+        filter, limit, dateFrom, dateTo, senders
       });
       if (!res || !res.ok) {
-        $('scan-note').textContent = 'Bulk download failed — is a chat open?';
+        $('scan-note').textContent = 'Download failed — is a chat open?';
+      } else if (autoScroll && res.result) {
+        const r = res.result;
+        $('scan-note').textContent =
+          `Auto-load done: ${r.queued} queued` + (r.documents ? `, ${r.documents} docs` : '') + '.';
       }
     } finally {
       btn.disabled = false;

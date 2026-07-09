@@ -60,6 +60,15 @@
       '#main'
     ],
 
+    // The element whose scrollbar moves the conversation (for auto-load).
+    // The true scroll container is resolved at runtime from these hints.
+    messagesScroller: [
+      '#main div[data-testid="conversation-panel-messages"]',
+      '#main [data-tab="8"]',
+      '#main div[role="application"]',
+      '#main .copyable-area'
+    ],
+
     /* ---------------- Messages ---------------- */
 
     // A single message bubble container. `data-id` carries the message id.

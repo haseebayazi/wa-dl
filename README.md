@@ -124,29 +124,42 @@ wa-media-downloader/
 
 ## How it works
 
-### Engine mode (primary) — download a whole chat/group
+The extension has two paths: an **engine mode** that reads a whole chat's
+history via WhatsApp's internal engine, and a **DOM mode** fallback that reads
+only the rendered page.
 
-The popup's **Download by chat** card talks to WhatsApp Web's own internal
-engine through the bundled, open-source [`@wppconnect/wa-js`](https://github.com/wppconnect-team/wa-js)
-library (Apache-2.0, vendored in `vendor/`). A MAIN-world bridge
-(`wa-bridge.js`) exposes three capabilities to an isolated-world relay
-(`wa-engine.js`):
+### Engine mode (primary) — "Download by chat"
 
-1. **List chats** — every conversation, not just the open one.
-2. **Collect media** — walks the loaded chat history and returns image /
-   video / audio / document messages with timestamps and captions (no
-   scrolling required), which drives the per-chat statistics and date range.
-3. **Download media** — asks WhatsApp to decrypt each selected message; the
-   resulting blob is named with your rules and pushed through the same
-   background download queue as everything else.
+Uses the bundled, open-source [`@wppconnect/wa-js`](https://github.com/wppconnect-team/wa-js)
+**v3.23.3** (Apache-2.0, in `vendor/`). Two details make it work reliably:
 
-> ⚠️ Engine mode relies on WhatsApp's **undocumented internal APIs**. They
-> are powerful (full-history export) but can change without notice and using
-> them may be against WhatsApp's Terms of Service — use it on your own
-> account and at your own discretion. When WhatsApp changes internals,
-> update the vendored `wa-js` bundle to a newer release.
+- **Injected on demand from the popup** via `chrome.scripting` into the page's
+  MAIN world — *after* WhatsApp Web has fully booted. Injecting earlier (e.g.
+  a `document_start` content script) runs before WhatsApp registers its
+  modules, and wa-js then fails to hook them. `wa-bridge.js` runs in that MAIN
+  world; the always-present `wa-engine.js` (isolated world) relays between it
+  and the popup/background.
+- It then lists every chat, walks the loaded history with
+  `WPP.chat.getMessages(chatId, { count: 10000 })`, and decrypts each selected
+  message (`message.downloadMedia()` with a `WPP.chat.downloadMedia(id)`
+  fallback). Decrypted blobs are named with your rules and pushed through the
+  same background download queue as everything else.
+
+> ⚠️ Engine mode uses WhatsApp's **undocumented internal APIs** — powerful
+> (whole-history export, no scrolling) but they change without notice and may
+> conflict with WhatsApp's Terms of Service. If a WhatsApp update breaks it,
+> bump `vendor/wppconnect-wa.js` to a wa-js release that matches the current
+> WhatsApp build. Use on your own account, at your discretion.
 
 ### DOM mode (fallback) — the open chat only
+
+**Auto-scroll loader.** Because WhatsApp virtualizes the message list (only
+on-screen messages exist in the DOM, and images decrypt when scrolled into
+view), the popup's **"Auto-scroll to load older history"** option walks the
+open conversation from newest to oldest, pausing so WhatsApp loads and
+decrypts each screen, and downloads media as it appears. Images and documents
+capture well this way; videos and voice notes only decrypt when opened, so
+scrolling alone usually won't capture them.
 
 1. **Detection.** WhatsApp Web decrypts media client-side and exposes it as
    `blob:` URLs on `<img>`, `<video>` and `<audio>` elements. A single
@@ -183,6 +196,9 @@ library (Apache-2.0, vendored in `vendor/`). A MAIN-world bridge
 - Chat media browser in the popup: current chat name + per-type counts.
 - Bulk download: images / videos / documents / audio / everything, scoped to
   everything loaded, last 50 or last 100.
+- Optional **auto-scroll** mode that walks the open chat's history, loading
+  and downloading older media (mainly images/documents) without manual
+  scrolling. Respects the same type / date / sender filters and the scope cap.
 - Bulk filters (within the open chat): a **date range** (From/To on the
   message timestamp) and a **per-sender** picker so you can grab just one
   group member's media. No selection = everyone.
@@ -277,10 +293,8 @@ WhatsApp Web's DOM is not a public API. This project isolates that risk:
 - The DOM layer **degrades gracefully**: unmatched selectors simply disable
   the corresponding feature, `selectors.healthReport()` feeds a warning banner
   in the popup, and no code path throws on a missing element.
-- **Engine mode** (the `Download by chat` card) does use WhatsApp internals
-  via the vendored `wa-js` bundle. When a WhatsApp update breaks it, bump
-  `vendor/wppconnect-wa.js` to a newer `@wppconnect/wa-js` release rather than
-  editing selectors.
+- No undocumented WhatsApp internals (webpack modules, Store objects) are
+  used — only the rendered DOM.
 
 ## Privacy
 

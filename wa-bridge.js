@@ -1,128 +1,92 @@
 /**
  * wa-bridge.js — MAIN-world engine bridge (page context)
  * ------------------------------------------------------------------
- * Runs in the WhatsApp Web page's own JavaScript context, on top of the
- * bundled @wppconnect/wa-js library (window.WPP). Unlike the DOM layer,
- * this can read WhatsApp's internal Store directly:
+ * Injected on demand by the popup (via chrome.scripting, world:MAIN)
+ * AFTER WhatsApp Web has fully booted, on top of the bundled
+ * @wppconnect/wa-js 3.23.3 (window.WPP). Injecting late — rather than at
+ * document_start — is what lets wa-js find WhatsApp's internal modules.
  *
- *   - enumerate every chat (even ones that aren't open)
- *   - collect media messages across the whole loaded chat history
- *   - download + decrypt any media on demand (no scrolling required)
+ * Exposes, over window.postMessage only (plain cloneable payloads):
+ *   - status       → engine readiness + chat count
+ *   - listChats    → every chat/group
+ *   - collectMedia → all media messages of a chat (whole loaded history)
+ *   - downloadOne  → decrypt one message's media to a data: URL
  *
- * It talks to the isolated-world relay (wa-engine.js) ONLY through
- * window.postMessage with plain, structured-cloneable payloads — no
- * WhatsApp objects ever cross the boundary.
- *
- * Uses WhatsApp internal APIs via wa-js; those are undocumented and can
- * change, so every call is defensive and failures are reported, never
- * thrown into the page.
+ * Live WhatsApp message objects never leave this world; downloadOne uses
+ * the objects cached from the last collectMedia call so it can use the
+ * robust message-model download path.
  * ------------------------------------------------------------------
  */
 (function () {
   'use strict';
 
-  const TAG = '[WAMD-Engine]';
+  if (window.__WAMD_BRIDGE__) return;   // idempotent (popup may re-inject)
+  window.__WAMD_BRIDGE__ = true;
+
   const REQ = 'WAMD_ENGINE_REQ';   // isolated → page
   const RES = 'WAMD_ENGINE_RES';   // page → isolated
-
-  /** 'loading' until WPP reports ready; then 'ready' or 'error'. */
-  let readyState = 'loading';
-  let readyError = null;
-
-  /** WhatsApp message types we treat as downloadable media. */
   const MEDIA_TYPES = new Set(['image', 'video', 'audio', 'ptt', 'document', 'sticker', 'gif']);
 
+  /** Live message objects from the last collectMedia, keyed by id. */
+  let msgCache = new Map();
+
   /**
-   * Resolve once wa-js is fully ready (modules injected AND the WhatsApp
-   * connection is authenticated/ready). Combines every signal wa-js
-   * exposes plus a poll, with a safety timeout so we never hang forever.
+   * Tolerant readiness wait (mirrors what works in practice): accept any
+   * of wa-js's ready signals, and never hard-block — after the timeout we
+   * proceed best-effort, exactly like the reference implementation.
    *
-   * @returns {Promise<void>}
+   * @returns {Promise<boolean>}
    */
-  function whenReady() {
-    return new Promise((resolve, reject) => {
-      const isReady = () => {
-        try {
-          if (!window.WPP) return false;
-          if (WPP.isFullReady) return true;
-          if (WPP.conn && typeof WPP.conn.isMainReady === 'function' && WPP.conn.isMainReady()) return true;
-          return false;
-        } catch (_) { return false; }
-      };
-      if (isReady()) { resolve(); return; }
-
-      let settled = false;
-      const finish = () => {
-        if (settled) return;
-        if (!isReady()) return;
-        settled = true;
-        clearInterval(poll);
-        clearTimeout(timeout);
-        resolve();
-      };
-
-      try { if (WPP.webpack && WPP.webpack.onFullReady) WPP.webpack.onFullReady(finish); } catch (_) { /* ignore */ }
-      try { if (WPP.on) WPP.on('conn.main_ready', finish); } catch (_) { /* ignore */ }
-
-      const poll = setInterval(finish, 500);
-      const timeout = setTimeout(() => {
-        if (settled) return;
-        settled = true;
-        clearInterval(poll);
-        reject(new Error('Timed out waiting for WhatsApp to be ready (are you logged in?)'));
-      }, 90000);
-    });
-  }
-
-  /** Best-effort chat count for the status line. */
-  async function safeChatCount() {
-    try { return (await WPP.chat.list()).length; } catch (_) { return -1; }
+  async function ensureReady() {
+    const end = Date.now() + 12000;
+    while (Date.now() < end) {
+      try {
+        const W = window.WPP;
+        if (W) {
+          if (typeof W.isReady === 'function' && await W.isReady()) return true;
+          if (typeof W.isReady === 'boolean' && W.isReady) return true;
+          if (W.webpack && typeof W.webpack.isReady === 'function' && await W.webpack.isReady()) return true;
+          if (W.webpack && W.webpack.isReady === true) return true;
+        }
+      } catch (_) { /* keep waiting */ }
+      await new Promise((r) => setTimeout(r, 150));
+    }
+    return !!window.WPP; // best-effort: proceed if WPP exists at all
   }
 
   /* ------------------------- message mapping ------------------------- */
 
-  /** Map a WhatsApp internal type to the extension's media kind. */
-  function mapKind(type) {
-    return ({ ptt: 'voice', gif: 'gif' })[type] || type;
-  }
+  const mapKind = (type) => ({ ptt: 'voice', gif: 'gif' })[type] || type;
 
-  /** Best display name for a message's sender. */
   function senderName(m) {
     try {
-      if (m.senderObj) {
-        const s = m.senderObj;
-        return s.formattedName || s.pushname || s.name ||
-          (s.id && (s.id.user || s.id._serialized)) || 'Unknown';
-      }
+      const s = m.senderObj || (m.from && m.from.contact);
+      if (s) return s.formattedName || s.pushname || s.name || (s.id && s.id.user) || '';
     } catch (_) { /* ignore */ }
     const a = m.author || m.from;
-    if (a && a._serialized) return a.user || a._serialized;
-    return a || 'Unknown';
+    return (a && (a.user || a._serialized)) || (typeof a === 'string' ? a : '') || 'Unknown';
   }
 
-  /**
-   * Reduce a wa-js RawMessage to a plain, cloneable DTO with just the
-   * fields the relay/UI need. WhatsApp message objects are not cloneable
-   * (methods + cycles), so we must project them here.
-   */
   function serializeMsg(m) {
-    const id = typeof m.id === 'string' ? m.id : (m.id && m.id._serialized) || '';
-    const fromMe = typeof m.id === 'object' && m.id ? !!m.id.fromMe : String(id).startsWith('true_');
+    const id = (m.id && m.id._serialized) || m.id || '';
     return {
-      id,
+      id: String(id),
       type: m.type,
       kind: mapKind(m.type),
-      t: m.t || m.messageTimestamp || 0,           // unix seconds
-      caption: (m.caption || (m.type !== 'chat' ? m.body : '') || '').toString().slice(0, 300),
-      filename: (m.filename || (m.mediaData && m.mediaData.filename) || '').toString(),
-      mimetype: (m.mimetype || (m.mediaData && m.mediaData.mimetype) || '').toString(),
+      t: m.t || m.timestamp || 0,
+      caption: String(m.caption || (m.type !== 'chat' ? m.body : '') || '').slice(0, 300),
+      filename: String(m.filename || (m.mediaData && m.mediaData.filename) || ''),
+      mimetype: String(m.mimetype || (m.mediaData && m.mediaData.mimetype) || ''),
       size: Number(m.size || (m.mediaData && m.mediaData.size) || 0) || 0,
-      sender: senderName(m),
-      fromMe
+      sender: senderName(m)
     };
   }
 
-  /** Read a Blob as a data: URL (transferable to the queue). */
+  const isMediaMsg = (m) => {
+    const kind = String(m.type || m.mediaType || '').toLowerCase();
+    return m.isMedia || m.isMMS || !!m.mediaKey || !!m.mediaData || MEDIA_TYPES.has(kind);
+  };
+
   function blobToDataURL(blob) {
     return new Promise((resolve, reject) => {
       const r = new FileReader();
@@ -132,57 +96,126 @@
     });
   }
 
+  /** Read an already-decrypted blob from a message's caches, if present. */
+  function cachedBlob(m) {
+    const md = m && (m.mediaData || m._mediaData);
+    const mb = md && md.mediaBlob;
+    try {
+      if (mb && typeof mb.forceToBlob === 'function') {
+        const b = mb.forceToBlob();
+        if (b instanceof Blob && b.size > 0) return b;
+      }
+    } catch (_) { /* ignore corrupt blob */ }
+    return null;
+  }
+
+  /**
+   * Download + decrypt a message's media into a Blob, trying the robust
+   * message-model path first, then the WPP.chat API by id.
+   *
+   * @param {object} message  live WhatsApp message object
+   * @param {string} id       serialized message id
+   * @returns {Promise<Blob>}
+   */
+  async function downloadBlob(message, id) {
+    const cached = cachedBlob(message);
+    if (cached) return cached;
+
+    if (message && typeof message.downloadMedia === 'function') {
+      try {
+        const r = await message.downloadMedia({
+          downloadEvenIfExpensive: true, rmrReason: 1, isUserInitiated: true
+        });
+        if (r instanceof Blob) return r;
+        await new Promise((res) => setTimeout(res, 250));
+        const b = cachedBlob(message);
+        if (b) return b;
+      } catch (_) { /* fall through to API */ }
+    }
+
+    const chat = window.WPP && window.WPP.chat;
+    if (chat && typeof chat.downloadMedia === 'function') {
+      const b = await chat.downloadMedia(id);
+      if (b instanceof Blob) return b;
+    }
+    throw new Error('Media could not be decrypted (expired or unavailable)');
+  }
+
   /* ----------------------------- actions ----------------------------- */
 
   const actions = {
-    /** Engine status + rough chat count (used for the popup banner). */
     async status() {
-      return {
-        readyState,
-        error: readyError,
-        chats: readyState === 'ready' ? await safeChatCount() : 0
-      };
+      const ready = await ensureReady();
+      let chats = 0;
+      try { chats = (await window.WPP.chat.list()).length; } catch (_) { chats = -1; }
+      return { readyState: ready ? 'ready' : 'loading', chats };
     },
 
-    /** All chats as {id, name, isGroup}, minus the status broadcast. */
     async listChats() {
-      const list = await WPP.chat.list();
-      return list
+      await ensureReady();
+      const list = await window.WPP.chat.list();
+      return (list || [])
         .map((c) => ({
-          id: (c.id && c.id._serialized) || String(c.id),
-          name: c.formattedTitle || c.name ||
+          id: (c && c.id && c.id._serialized) || (c && c.id) || '',
+          name: (c && (c.formattedTitle || c.name ||
             (c.contact && (c.contact.formattedName || c.contact.pushname)) ||
-            (c.id && c.id.user) || 'Unknown',
-          isGroup: !!c.isGroup
+            (c.id && c.id.user))) || 'Chat',
+          isGroup: !!(c && c.isGroup)
         }))
         .filter((c) => c.id && c.id !== 'status@broadcast');
     },
 
-    /**
-     * Collect every media message of a chat across its loaded history.
-     * count:-1 makes wa-js page back through history until exhausted.
-     *
-     * @param {{chatId: string}} args
-     */
     async collectMedia({ chatId }) {
-      const msgs = await WPP.chat.getMessages(chatId, { count: -1 });
+      await ensureReady();
+      let msgs = null;
+      try {
+        msgs = await window.WPP.chat.getMessages(chatId, { count: 10000 });
+      } catch (_) {
+        try { msgs = await window.WPP.chat.getMessages(chatId, { count: 3000 }); }
+        catch (_2) { msgs = await window.WPP.chat.getMessages(chatId); }
+      }
+      msgs = msgs || [];
+
+      // If WhatsApp returned another chat's buffer, open the chat and retry.
+      const otherChat = (m) => {
+        const r = m && m.id && (m.id.remote || m.id._remote);
+        const rs = (r && r._serialized) || (typeof r === 'string' ? r : '') || m.chatId || '';
+        return rs && rs !== chatId;
+      };
+      if (msgs.length && msgs.filter(otherChat).length > msgs.length * 0.6) {
+        try {
+          const chat = window.WPP.chat;
+          if (chat.openChatBottom) await chat.openChatBottom(chatId);
+          else if (chat.openChatAt) await chat.openChatAt(chatId);
+          await new Promise((r) => setTimeout(r, 250));
+          msgs = await window.WPP.chat.getMessages(chatId, { count: 5000 });
+        } catch (_) { /* keep what we have */ }
+      }
+      msgs = msgs.filter((m) => !otherChat(m));
+
+      msgCache = new Map();
       const items = [];
       for (const m of msgs) {
-        if (MEDIA_TYPES.has(m.type)) items.push(serializeMsg(m));
+        if (!isMediaMsg(m)) continue;
+        const dto = serializeMsg(m);
+        if (!dto.id) continue;
+        msgCache.set(dto.id, m);
+        items.push(dto);
       }
       return { items };
     },
 
-    /**
-     * Download + decrypt one media message and return it as a data URL.
-     *
-     * @param {{id: string, mimetype?: string}} args
-     */
-    async downloadMedia({ id, mimetype }) {
-      const blob = await WPP.chat.downloadMedia(id);
-      if (!blob) throw new Error('No media returned (message may be expired)');
+    async downloadOne({ id, mimetype }) {
+      await ensureReady();
+      let message = msgCache.get(id);
+      if (!message) {
+        // Cache miss (e.g. popup reopened) — look the message up by id.
+        try { message = await window.WPP.chat.getMessageById(id); } catch (_) { /* ignore */ }
+      }
+      const blob = await downloadBlob(message, id);
+      if (!blob || blob.size === 0) throw new Error('Empty media');
       const dataUrl = await blobToDataURL(blob);
-      return { dataUrl, mimetype: blob.type || mimetype || '', size: blob.size || 0 };
+      return { dataUrl, mimetype: blob.type || mimetype || '', size: blob.size };
     }
   };
 
@@ -192,14 +225,9 @@
     if (ev.source !== window) return;
     const d = ev.data;
     if (!d || d.source !== REQ) return;
-
     const { id, action, args } = d;
     const fn = actions[action];
     if (!fn) { post(id, false, null, `Unknown engine action: ${action}`); return; }
-    if (readyState !== 'ready' && action !== 'status') {
-      post(id, false, null, `Engine ${readyState}${readyError ? ': ' + readyError : ''}`);
-      return;
-    }
     try {
       post(id, true, await fn(args || {}), null);
     } catch (err) {
@@ -207,28 +235,9 @@
     }
   });
 
-  /** Send a response frame back to the isolated relay. */
   function post(id, ok, result, error) {
     window.postMessage({ source: RES, id, ok, result, error }, '*');
   }
 
-  /* ------------------------------ boot ------------------------------ */
-
-  (async () => {
-    try {
-      if (!window.WPP) {
-        readyState = 'error';
-        readyError = 'wa-js library not present';
-        console.warn(TAG, readyError);
-        return;
-      }
-      await whenReady();
-      readyState = 'ready';
-      console.info(TAG, 'ready — internal engine connected. chats:', await safeChatCount());
-    } catch (err) {
-      readyState = 'error';
-      readyError = String((err && err.message) || err);
-      console.warn(TAG, 'init failed:', readyError);
-    }
-  })();
+  console.info('[WAMD-Engine] bridge injected (wa-js', (window.WPP && window.WPP.version) || '?', ')');
 })();

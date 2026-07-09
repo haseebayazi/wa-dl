@@ -59,13 +59,16 @@
     },
     {
       "matches": ["https://web.whatsapp.com/*"],
-      "js": [
-        "vendor/wppconnect-wa.js",
-        "wa-bridge.js",
-        "inject.js"
-      ],
+      "js": ["inject.js"],
       "world": "MAIN",
-      "run_at": "document_start"
+      "run_at": "document_idle"
+    }
+  ],
+
+  "web_accessible_resources": [
+    {
+      "resources": ["vendor/wppconnect-wa.js", "wa-bridge.js"],
+      "matches": ["https://web.whatsapp.com/*"]
     }
   ]
 }
