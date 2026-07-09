@@ -42,9 +42,8 @@
     await waitForApp();
     startObserver();
     rescan();
-    console.info('[WAMD] WA Media Downloader Pro ready');
-    // First-run self-diagnosis so layout problems are visible immediately.
-    logDiagnostics();
+    // Diagnostics are available on demand via WAMD_DIAGNOSE / logDiagnostics()
+    // but are no longer auto-logged (the engine is the primary path now).
   }
 
   /**
@@ -96,7 +95,11 @@
     };
   }
 
-  /** Print the diagnostic report to the console in a copy-friendly form. */
+  /**
+   * Print the diagnostic report to the console in a copy-friendly form.
+   * Not called automatically — invoke `WAMD.__diagnose()` from the console
+   * (or send WAMD_DIAGNOSE) when troubleshooting DOM detection.
+   */
   function logDiagnostics() {
     try {
       const report = diagnose();
@@ -107,16 +110,8 @@
     }
   }
 
-  /** Last time diagnostics were logged, to avoid console spam. */
-  let lastDiagAt = 0;
-
-  /** Log diagnostics at most once every 5 seconds. */
-  function maybeLogDiagnostics() {
-    const now = Date.now();
-    if (now - lastDiagAt < 5000) return;
-    lastDiagAt = now;
-    logDiagnostics();
-  }
+  // Expose a manual diagnostic hook for troubleshooting without console spam.
+  try { globalThis.WAMD = globalThis.WAMD || {}; globalThis.WAMD.__diagnose = logDiagnostics; } catch (_) { /* ignore */ }
 
   /**
    * Poll until WhatsApp's app root exists (it boots asynchronously).
@@ -625,9 +620,6 @@
 
       case 'WAMD_GET_STATE':
         rescan(); // fresh numbers when the popup opens
-        // Re-log diagnostics (throttled) so a chat opened after page load
-        // is captured — init() may have run on an empty conversation view.
-        maybeLogDiagnostics();
         sendResponse({
           ok: true,
           result: {
