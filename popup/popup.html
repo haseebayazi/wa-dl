@@ -38,6 +38,48 @@
     <!-- Main view (WhatsApp tab active) -->
     <div id="view-main" class="hidden">
 
+      <!-- Engine: full-history download by chat/group -->
+      <section class="card" id="engine-card">
+        <h2>Download by chat <span id="engine-status" class="badge">starting…</span></h2>
+        <div class="row">
+          <label class="small" for="engine-chat">Chat / group</label>
+          <select id="engine-chat"><option value="">—</option></select>
+          <button id="engine-reload-chats" class="mini" title="Reload chat list">⟳</button>
+        </div>
+
+        <div id="engine-stats" class="chips hidden">
+          <span class="chip">📦 <b id="e-total">0</b> total</span>
+          <span class="chip">🖼 <b id="e-image">0</b></span>
+          <span class="chip">🎬 <b id="e-video">0</b></span>
+          <span class="chip">🎵 <b id="e-audio">0</b></span>
+          <span class="chip">📄 <b id="e-document">0</b></span>
+        </div>
+        <p id="engine-range" class="muted small"></p>
+
+        <div class="row dates">
+          <label class="small" for="e-from">From</label>
+          <input id="e-from" type="date" />
+          <label class="small" for="e-to">To</label>
+          <input id="e-to" type="date" />
+        </div>
+
+        <div class="etypes">
+          <label class="etype"><input type="checkbox" class="e-type" value="images" checked /> 🖼 Images</label>
+          <label class="etype"><input type="checkbox" class="e-type" value="videos" checked /> 🎬 Videos</label>
+          <label class="etype"><input type="checkbox" class="e-type" value="audio" checked /> 🎵 Audio</label>
+          <label class="etype"><input type="checkbox" class="e-type" value="documents" checked /> 📄 Docs</label>
+        </div>
+
+        <div class="row">
+          <label class="small" for="e-limit">Max files</label>
+          <input id="e-limit" type="number" min="0" step="1" value="0" />
+          <span class="muted small">0 = all</span>
+        </div>
+
+        <button id="engine-download" class="btn btn-primary btn-wide" disabled>⬇ Download from this chat</button>
+        <p id="engine-note" class="muted small">Reads the whole loaded chat history via WhatsApp's engine — no scrolling needed.</p>
+      </section>
+
       <!-- Detected media counts -->
       <section class="card">
         <h2>Detected media <button id="btn-refresh" class="icon-btn" title="Refresh">⟳</button></h2>

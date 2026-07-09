@@ -45,6 +45,184 @@
       refreshStats(),
       runSearch('')
     ]);
+
+    if (onSite) engineInit();
+  }
+
+  /* ============================ Engine ============================ */
+
+  /**
+   * Boot the Store engine: inject wa-js + the page bridge into the tab's
+   * MAIN world (on demand, now that WhatsApp is loaded — this timing is
+   * what lets wa-js hook WhatsApp's internals), then wait for readiness
+   * and load the chat list.
+   */
+  async function engineInit() {
+    wireEngineEvents();
+    const injected = await ensureEngineInjected();
+    if (!injected) {
+      setBadge('unavailable', 'err');
+      $('engine-note').textContent = 'Could not inject the engine. Reload the WhatsApp tab and reopen.';
+      return;
+    }
+    if (await waitForEngine(20)) await loadEngineChats();
+  }
+
+  /**
+   * Inject the vendor library and page bridge into the MAIN world via
+   * chrome.scripting, skipping either if it is already present.
+   *
+   * @returns {Promise<boolean>} whether injection succeeded
+   */
+  async function ensureEngineInjected() {
+    if (waTabId === null || !chrome.scripting) return false;
+    const runInMain = async (func) => {
+      try {
+        const [res] = await chrome.scripting.executeScript({
+          target: { tabId: waTabId }, world: 'MAIN', func
+        });
+        return res && res.result;
+      } catch (_) { return undefined; }
+    };
+    const injectFile = (file) => chrome.scripting.executeScript({
+      target: { tabId: waTabId }, world: 'MAIN', files: [file]
+    });
+
+    try {
+      if (!(await runInMain(() => !!window.WPP))) {
+        await injectFile('vendor/wppconnect-wa.js');
+      }
+      if (!(await runInMain(() => !!window.__WAMD_BRIDGE__))) {
+        await injectFile('wa-bridge.js');
+      }
+      return true;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  /** Set the engine status badge text + state class. */
+  function setBadge(text, cls) {
+    const b = $('engine-status');
+    b.textContent = text;
+    b.className = `badge${cls ? ' ' + cls : ''}`;
+  }
+
+  /**
+   * Poll engine status until ready (wa-js needs a moment to connect).
+   *
+   * @param {number} tries
+   * @returns {Promise<boolean>}
+   */
+  async function waitForEngine(tries) {
+    for (let i = 0; i < tries; i++) {
+      const res = await sendToTab({ type: 'WAMD_ENGINE_STATUS' });
+      const s = res && res.ok ? res.result : null;
+      if (s && s.readyState === 'ready') { setBadge('connected', 'ok'); return true; }
+      setBadge('connecting…', '');
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+    setBadge('timed out', 'err');
+    $('engine-note').textContent = 'Engine did not connect. Make sure you are logged into WhatsApp Web, then reload the tab.';
+    return false;
+  }
+
+  /** Attach engine-card listeners once. */
+  let engineWired = false;
+  function wireEngineEvents() {
+    if (engineWired) return;
+    engineWired = true;
+    $('engine-reload-chats').addEventListener('click', loadEngineChats);
+    $('engine-chat').addEventListener('change', loadEngineStats);
+    $('engine-download').addEventListener('click', startEngineDownload);
+  }
+
+  /** Populate the chat dropdown from the engine. */
+  async function loadEngineChats() {
+    const sel = $('engine-chat');
+    sel.innerHTML = '<option value="">Loading chats…</option>';
+    const res = await sendToTab({ type: 'WAMD_ENGINE_CHATS' });
+    if (!res || !res.ok) {
+      sel.innerHTML = '<option value="">Could not load chats</option>';
+      $('engine-note').textContent = res && res.error ? res.error : 'Chat list failed.';
+      return;
+    }
+    const chats = res.result || [];
+    sel.innerHTML = '<option value="">Select a chat / group…</option>';
+    for (const c of chats) {
+      const opt = document.createElement('option');
+      opt.value = c.id;
+      opt.textContent = (c.isGroup ? '👥 ' : '') + c.name;
+      opt.dataset.name = c.name;
+      sel.appendChild(opt);
+    }
+    $('engine-note').textContent = `${chats.length} chats available.`;
+  }
+
+  /** Load and render media statistics for the selected chat. */
+  async function loadEngineStats() {
+    const sel = $('engine-chat');
+    const chatId = sel.value;
+    $('engine-download').disabled = true;
+    $('engine-stats').classList.add('hidden');
+    $('engine-range').textContent = '';
+    if (!chatId) return;
+
+    const chatName = sel.selectedOptions[0] ? sel.selectedOptions[0].dataset.name : '';
+    $('engine-note').textContent = 'Scanning chat history…';
+    const res = await sendToTab({ type: 'WAMD_ENGINE_STATS', chatId, chatName });
+    if (!res || !res.ok) {
+      $('engine-note').textContent = `Could not read chat: ${res && res.error ? res.error : 'unknown error'}`;
+      return;
+    }
+    const s = res.result;
+    $('e-total').textContent = s.total;
+    $('e-image').textContent = s.counts.image || 0;
+    $('e-video').textContent = s.counts.video || 0;
+    $('e-audio').textContent = s.counts.audio || 0;
+    $('e-document').textContent = s.counts.document || 0;
+    $('engine-stats').classList.remove('hidden');
+    if (s.from && s.to) {
+      const fmt = (ms) => new Date(ms).toLocaleDateString();
+      $('engine-range').textContent = `Date range: ${fmt(s.from)} – ${fmt(s.to)}`;
+    }
+    $('engine-note').textContent = s.total ? 'Adjust filters, then download.' : 'No media found in this chat.';
+    $('engine-download').disabled = s.total === 0;
+  }
+
+  /** Kick off a Store-based download for the selected chat + filters. */
+  async function startEngineDownload() {
+    const sel = $('engine-chat');
+    const chatId = sel.value;
+    if (!chatId) return;
+    const chatName = sel.selectedOptions[0] ? sel.selectedOptions[0].dataset.name : '';
+    const types = Array.from(document.querySelectorAll('.e-type:checked')).map((c) => c.value);
+    if (!types.length) { $('engine-note').textContent = 'Select at least one media type.'; return; }
+
+    const from = $('e-from').value ? new Date(`${$('e-from').value}T00:00:00`).getTime() : null;
+    const to = $('e-to').value ? new Date(`${$('e-to').value}T23:59:59.999`).getTime() : null;
+    const limit = parseInt($('e-limit').value, 10) || 0;
+
+    const btn = $('engine-download');
+    btn.disabled = true;
+    btn.classList.add('busy');
+    $('engine-note').textContent = 'Downloading… large chats can take a while. Keep this popup open.';
+    try {
+      const res = await sendToTab({
+        type: 'WAMD_ENGINE_DOWNLOAD', chatId, chatName, types, from, to, limit
+      });
+      if (!res || !res.ok) {
+        $('engine-note').textContent = `Download failed: ${res && res.error ? res.error : 'unknown error'}`;
+      } else {
+        const r = res.result;
+        $('engine-note').textContent =
+          `Queued ${r.queued} file(s)` + (r.failed ? `, ${r.failed} unavailable/failed` : '') + '. See the queue below.';
+      }
+    } finally {
+      btn.disabled = false;
+      btn.classList.remove('busy');
+      refreshQueue();
+    }
   }
 
   /**

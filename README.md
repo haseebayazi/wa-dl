@@ -124,9 +124,34 @@ wa-media-downloader/
 
 ## How it works
 
-The extension reads only WhatsApp Web's **rendered DOM** — no internal APIs.
-That keeps it robust and low-risk, at the cost of one inherent limit: it can
-only download media WhatsApp has actually loaded and decrypted into the page.
+The extension has two paths: an **engine mode** that reads a whole chat's
+history via WhatsApp's internal engine, and a **DOM mode** fallback that reads
+only the rendered page.
+
+### Engine mode (primary) — "Download by chat"
+
+Uses the bundled, open-source [`@wppconnect/wa-js`](https://github.com/wppconnect-team/wa-js)
+**v3.23.3** (Apache-2.0, in `vendor/`). Two details make it work reliably:
+
+- **Injected on demand from the popup** via `chrome.scripting` into the page's
+  MAIN world — *after* WhatsApp Web has fully booted. Injecting earlier (e.g.
+  a `document_start` content script) runs before WhatsApp registers its
+  modules, and wa-js then fails to hook them. `wa-bridge.js` runs in that MAIN
+  world; the always-present `wa-engine.js` (isolated world) relays between it
+  and the popup/background.
+- It then lists every chat, walks the loaded history with
+  `WPP.chat.getMessages(chatId, { count: 10000 })`, and decrypts each selected
+  message (`message.downloadMedia()` with a `WPP.chat.downloadMedia(id)`
+  fallback). Decrypted blobs are named with your rules and pushed through the
+  same background download queue as everything else.
+
+> ⚠️ Engine mode uses WhatsApp's **undocumented internal APIs** — powerful
+> (whole-history export, no scrolling) but they change without notice and may
+> conflict with WhatsApp's Terms of Service. If a WhatsApp update breaks it,
+> bump `vendor/wppconnect-wa.js` to a wa-js release that matches the current
+> WhatsApp build. Use on your own account, at your discretion.
+
+### DOM mode (fallback) — the open chat only
 
 **Auto-scroll loader.** Because WhatsApp virtualizes the message list (only
 on-screen messages exist in the DOM, and images decrypt when scrolled into
