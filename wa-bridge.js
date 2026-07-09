@@ -1,42 +1,39 @@
 /**
  * wa-bridge.js — MAIN-world engine bridge (page context)
  * ------------------------------------------------------------------
- * Injected on demand by the popup (via chrome.scripting, world:MAIN)
- * AFTER WhatsApp Web has fully booted, on top of the bundled
- * @wppconnect/wa-js 3.23.3 (window.WPP). Injecting late — rather than at
- * document_start — is what lets wa-js find WhatsApp's internal modules.
+ * Injected on demand by the popup (chrome.scripting, world:MAIN) AFTER
+ * WhatsApp Web has booted, on top of @wppconnect/wa-js 3.23.3
+ * (window.WPP). Late injection is what lets wa-js find WhatsApp's
+ * internal modules.
  *
- * Exposes, over window.postMessage only (plain cloneable payloads):
- *   - status       → engine readiness + chat count
- *   - listChats    → every chat/group
- *   - collectMedia → all media messages of a chat (whole loaded history)
- *   - downloadOne  → decrypt one message's media to a data: URL
+ * Talks to the isolated relay (wa-engine.js) via window.postMessage:
+ *   - status            engine readiness + chat count
+ *   - listChats         every chat/group
+ *   - collectMedia      quick media stats (single getMessages)
+ *   - collectMediaFull  whole history, paged backwards
+ *   - downloadOne       decrypt one message → data URL (individual mode)
+ *   - downloadZip       decrypt a filtered set, build a ZIP, save it
  *
- * Live WhatsApp message objects never leave this world; downloadOne uses
- * the objects cached from the last collectMedia call so it can use the
- * robust message-model download path.
+ * Live message objects never leave this world; downloads use the objects
+ * cached from the last collect call for the robust message-model path.
  * ------------------------------------------------------------------
  */
 (function () {
   'use strict';
 
-  if (window.__WAMD_BRIDGE__) return;   // idempotent (popup may re-inject)
+  if (window.__WAMD_BRIDGE__) return;
   window.__WAMD_BRIDGE__ = true;
 
-  const REQ = 'WAMD_ENGINE_REQ';   // isolated → page
-  const RES = 'WAMD_ENGINE_RES';   // page → isolated
+  const REQ = 'WAMD_ENGINE_REQ';
+  const RES = 'WAMD_ENGINE_RES';
   const MEDIA_TYPES = new Set(['image', 'video', 'audio', 'ptt', 'document', 'sticker', 'gif']);
 
-  /** Live message objects from the last collectMedia, keyed by id. */
-  let msgCache = new Map();
+  let msgCache = new Map();   // id → live message object (from last collect)
+  let lastChatId = null;
+  let cacheMode = 'quick';    // 'quick' (stats) | 'full' (whole history)
 
-  /**
-   * Tolerant readiness wait (mirrors what works in practice): accept any
-   * of wa-js's ready signals, and never hard-block — after the timeout we
-   * proceed best-effort, exactly like the reference implementation.
-   *
-   * @returns {Promise<boolean>}
-   */
+  /* ----------------------------- readiness ----------------------------- */
+
   async function ensureReady() {
     const end = Date.now() + 12000;
     while (Date.now() < end) {
@@ -51,12 +48,22 @@
       } catch (_) { /* keep waiting */ }
       await new Promise((r) => setTimeout(r, 150));
     }
-    return !!window.WPP; // best-effort: proceed if WPP exists at all
+    return !!window.WPP;
   }
 
   /* ------------------------- message mapping ------------------------- */
 
   const mapKind = (type) => ({ ptt: 'voice', gif: 'gif' })[type] || type;
+  const msgId = (m) => String((m && m.id && m.id._serialized) || (m && m.id) || '');
+  const msgTs = (m) => (m && (m.t || m.timestamp)) || 0;
+  const msgChat = (m) => {
+    const r = m && m.id && (m.id.remote || m.id._remote);
+    return (r && r._serialized) || (typeof r === 'string' ? r : '') || (m && m.chatId) || '';
+  };
+  const isMediaMsg = (m) => {
+    const kind = String(m.type || m.mediaType || '').toLowerCase();
+    return m.isMedia || m.isMMS || !!m.mediaKey || !!m.mediaData || MEDIA_TYPES.has(kind);
+  };
 
   function senderName(m) {
     try {
@@ -68,12 +75,11 @@
   }
 
   function serializeMsg(m) {
-    const id = (m.id && m.id._serialized) || m.id || '';
     return {
-      id: String(id),
+      id: msgId(m),
       type: m.type,
       kind: mapKind(m.type),
-      t: m.t || m.timestamp || 0,
+      t: msgTs(m),
       caption: String(m.caption || (m.type !== 'chat' ? m.body : '') || '').slice(0, 300),
       filename: String(m.filename || (m.mediaData && m.mediaData.filename) || ''),
       mimetype: String(m.mimetype || (m.mediaData && m.mediaData.mimetype) || ''),
@@ -82,21 +88,85 @@
     };
   }
 
-  const isMediaMsg = (m) => {
-    const kind = String(m.type || m.mediaType || '').toLowerCase();
-    return m.isMedia || m.isMMS || !!m.mediaKey || !!m.mediaData || MEDIA_TYPES.has(kind);
-  };
+  /* --------------------------- history fetch --------------------------- */
+
+  /** Single quick pull for statistics (approximate for very large chats). */
+  async function quickFetch(chatId) {
+    let msgs = null;
+    try { msgs = await window.WPP.chat.getMessages(chatId, { count: 10000 }); }
+    catch (_) {
+      try { msgs = await window.WPP.chat.getMessages(chatId, { count: 3000 }); }
+      catch (_2) { msgs = await window.WPP.chat.getMessages(chatId); }
+    }
+    return (msgs || []).filter((m) => { const c = msgChat(m); return !c || c === chatId; });
+  }
+
+  /**
+   * Page backwards through the whole loaded history, one batch at a time,
+   * collecting media messages. Mirrors the reference implementation's
+   * cursor logic (anchor on the oldest message of each batch).
+   *
+   * @param {string} chatId
+   * @param {{batchSize?: number, maxBatches?: number}} [opts]
+   * @returns {Promise<object[]>} media message objects (oldest-first order not guaranteed)
+   */
+  async function fullFetch(chatId, opts) {
+    const batchSize = (opts && opts.batchSize) || 800;
+    const maxBatches = (opts && opts.maxBatches) || 80;
+    const out = [];
+    const seen = new Set();
+    let anchor = '';
+    let noNew = 0;
+    let sameAnchor = 0;
+
+    for (let b = 0; b < maxBatches; b++) {
+      const o = { count: batchSize, direction: anchor ? 'before' : undefined, id: anchor || undefined };
+      let batch;
+      try { batch = await window.WPP.chat.getMessages(chatId, o); }
+      catch (_) { break; }
+      if (!batch || !batch.length) break;
+
+      batch = batch.filter((m) => { const c = msgChat(m); return !c || c === chatId; });
+      if (anchor) batch = batch.filter((m) => msgId(m) !== anchor);
+      if (!batch.length) break;
+
+      let newCount = 0;
+      for (const m of batch) {
+        const id = msgId(m);
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        newCount += 1;
+        if (isMediaMsg(m)) out.push(m);
+      }
+
+      // Cursor = oldest (min timestamp) message of the batch.
+      let cur = batch[0];
+      let curTs = msgTs(cur);
+      for (const x of batch) {
+        const t = msgTs(x);
+        if (t && (!curTs || t < curTs)) { cur = x; curTs = t; }
+      }
+      const cursor = msgId(cur) || msgId(batch[batch.length - 1]);
+      if (!cursor) break;
+
+      if (cursor === anchor) { if (++sameAnchor >= 2) break; } else sameAnchor = 0;
+      if (!newCount) { if (++noNew >= 2) break; } else noNew = 0;
+      anchor = cursor;
+    }
+    return out;
+  }
+
+  /* ----------------------------- download ----------------------------- */
 
   function blobToDataURL(blob) {
     return new Promise((resolve, reject) => {
       const r = new FileReader();
       r.onload = () => resolve(r.result);
-      r.onerror = () => reject(r.error || new Error('Failed to read media blob'));
+      r.onerror = () => reject(r.error || new Error('read failed'));
       r.readAsDataURL(blob);
     });
   }
 
-  /** Read an already-decrypted blob from a message's caches, if present. */
   function cachedBlob(m) {
     const md = m && (m.mediaData || m._mediaData);
     const mb = md && md.mediaBlob;
@@ -105,43 +175,167 @@
         const b = mb.forceToBlob();
         if (b instanceof Blob && b.size > 0) return b;
       }
-    } catch (_) { /* ignore corrupt blob */ }
+    } catch (_) { /* corrupt */ }
     return null;
   }
 
-  /**
-   * Download + decrypt a message's media into a Blob, trying the robust
-   * message-model path first, then the WPP.chat API by id.
-   *
-   * @param {object} message  live WhatsApp message object
-   * @param {string} id       serialized message id
-   * @returns {Promise<Blob>}
-   */
   async function downloadBlob(message, id) {
     const cached = cachedBlob(message);
     if (cached) return cached;
-
     if (message && typeof message.downloadMedia === 'function') {
       try {
-        const r = await message.downloadMedia({
-          downloadEvenIfExpensive: true, rmrReason: 1, isUserInitiated: true
-        });
+        const r = await message.downloadMedia({ downloadEvenIfExpensive: true, rmrReason: 1, isUserInitiated: true });
         if (r instanceof Blob) return r;
         await new Promise((res) => setTimeout(res, 250));
         const b = cachedBlob(message);
         if (b) return b;
-      } catch (_) { /* fall through to API */ }
+      } catch (_) { /* fall through */ }
     }
-
     const chat = window.WPP && window.WPP.chat;
     if (chat && typeof chat.downloadMedia === 'function') {
       const b = await chat.downloadMedia(id);
       if (b instanceof Blob) return b;
     }
-    throw new Error('Media could not be decrypted (expired or unavailable)');
+    throw new Error('Media unavailable (expired or not downloadable)');
+  }
+
+  /* ----------------------------- naming ----------------------------- */
+
+  function sanitize(s, max) {
+    const out = String(s || '')
+      .replace(/\s+/g, ' ')
+      .replace(/[\\/:*?"<>|]+/g, '_')
+      .replace(/[\u0000-\u001f]/g, '')
+      .replace(/[. ]+$/g, '')
+      .trim();
+    return (out || 'file').slice(0, max || 120);
+  }
+  const pad = (n) => String(n).padStart(2, '0');
+  function stamp(t) {
+    const d = t ? new Date(t * 1000) : new Date();
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
+  }
+  function extFromMime(mime) {
+    const m = String(mime || '').toLowerCase().split(';')[0].trim();
+    const MAP = {
+      'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif',
+      'video/mp4': 'mp4', 'video/webm': 'webm', 'audio/ogg': 'ogg', 'audio/mpeg': 'mp3',
+      'audio/mp4': 'm4a', 'application/pdf': 'pdf', 'application/zip': 'zip'
+    };
+    if (MAP[m]) return MAP[m];
+    const sub = m.split('/')[1];
+    return sub ? sub.replace(/^x-/, '').slice(0, 8) : 'bin';
+  }
+
+  /** Build a ZIP entry name from the naming options (caption / date / original). */
+  function makeName(dto, naming, chatName, idx, ext) {
+    naming = naming || {};
+    const parts = [];
+    if (naming.useCaption && dto.caption) {
+      parts.push(sanitize(dto.caption, 80));
+      if (naming.useDate) parts.push(stamp(dto.t));
+    } else {
+      parts.push(sanitize(chatName || 'Chat', 60));
+      parts.push(stamp(dto.t));
+    }
+    parts.push(String(idx).padStart(4, '0'));
+    if (naming.appendOrig && dto.filename) {
+      const orig = sanitize(dto.filename.replace(/\.[^.]+$/, ''), 80);
+      if (orig && !parts.join('_').includes(orig)) parts.push(orig);
+    }
+    return `${parts.join('_')}.${ext}`;
+  }
+
+  const inRange = (t, from, to) => {
+    const ms = t * 1000;
+    if (from && ms < from) return false;
+    if (to && ms > to) return false;
+    return true;
+  };
+
+  /* ------------------------------- ZIP ------------------------------- */
+
+  const crcTable = (() => {
+    const t = new Uint32Array(256);
+    for (let i = 0; i < 256; i++) {
+      let c = i;
+      for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      t[i] = c >>> 0;
+    }
+    return t;
+  })();
+  function crc32(bytes) {
+    let crc = -1;
+    for (let i = 0; i < bytes.length; i++) crc = (crc >>> 8) ^ crcTable[(crc ^ bytes[i]) & 0xFF];
+    return (crc ^ -1) >>> 0;
+  }
+  const u16 = (n) => { const a = new Uint8Array(2); new DataView(a.buffer).setUint16(0, n & 0xFFFF, true); return a; };
+  const u32 = (n) => { const a = new Uint8Array(4); new DataView(a.buffer).setUint32(0, n >>> 0, true); return a; };
+  function concat(parts) {
+    let len = 0;
+    for (const p of parts) len += p.length;
+    const out = new Uint8Array(len);
+    let off = 0;
+    for (const p of parts) { out.set(p, off); off += p.length; }
+    return out;
+  }
+  /** Build an uncompressed (store) ZIP from [{name, bytes}]. */
+  function makeZip(entries) {
+    const enc = new TextEncoder();
+    const locals = [];
+    const centrals = [];
+    let offset = 0;
+    for (const e of entries) {
+      const name = enc.encode(e.name);
+      const data = e.bytes;
+      const crc = crc32(data);
+      const local = concat([
+        u32(0x04034b50), u16(20), u16(0), u16(0), u16(0), u16(0),
+        u32(crc), u32(data.length), u32(data.length), u16(name.length), u16(0), name, data
+      ]);
+      locals.push(local);
+      centrals.push(concat([
+        u32(0x02014b50), u16(20), u16(20), u16(0), u16(0), u16(0), u16(0),
+        u32(crc), u32(data.length), u32(data.length), u16(name.length),
+        u16(0), u16(0), u16(0), u16(0), u32(0), u32(offset), name
+      ]));
+      offset += local.length;
+    }
+    const cd = concat(centrals);
+    const eocd = concat([
+      u32(0x06054b50), u16(0), u16(0), u16(entries.length), u16(entries.length),
+      u32(cd.length), u32(offset), u16(0)
+    ]);
+    return concat([...locals, cd, eocd]);
+  }
+
+  function anchorDownload(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
   }
 
   /* ----------------------------- actions ----------------------------- */
+
+  function cacheAll(msgs, chatId, mode) {
+    msgCache = new Map();
+    lastChatId = chatId;
+    cacheMode = mode || 'quick';
+    const items = [];
+    for (const m of msgs) {
+      if (!isMediaMsg(m)) continue;
+      const dto = serializeMsg(m);
+      if (!dto.id) continue;
+      msgCache.set(dto.id, m);
+      items.push(dto);
+    }
+    return items;
+  }
 
   const actions = {
     async status() {
@@ -167,55 +361,58 @@
 
     async collectMedia({ chatId }) {
       await ensureReady();
-      let msgs = null;
-      try {
-        msgs = await window.WPP.chat.getMessages(chatId, { count: 10000 });
-      } catch (_) {
-        try { msgs = await window.WPP.chat.getMessages(chatId, { count: 3000 }); }
-        catch (_2) { msgs = await window.WPP.chat.getMessages(chatId); }
-      }
-      msgs = msgs || [];
+      return { items: cacheAll(await quickFetch(chatId), chatId, 'quick') };
+    },
 
-      // If WhatsApp returned another chat's buffer, open the chat and retry.
-      const otherChat = (m) => {
-        const r = m && m.id && (m.id.remote || m.id._remote);
-        const rs = (r && r._serialized) || (typeof r === 'string' ? r : '') || m.chatId || '';
-        return rs && rs !== chatId;
-      };
-      if (msgs.length && msgs.filter(otherChat).length > msgs.length * 0.6) {
-        try {
-          const chat = window.WPP.chat;
-          if (chat.openChatBottom) await chat.openChatBottom(chatId);
-          else if (chat.openChatAt) await chat.openChatAt(chatId);
-          await new Promise((r) => setTimeout(r, 250));
-          msgs = await window.WPP.chat.getMessages(chatId, { count: 5000 });
-        } catch (_) { /* keep what we have */ }
-      }
-      msgs = msgs.filter((m) => !otherChat(m));
-
-      msgCache = new Map();
-      const items = [];
-      for (const m of msgs) {
-        if (!isMediaMsg(m)) continue;
-        const dto = serializeMsg(m);
-        if (!dto.id) continue;
-        msgCache.set(dto.id, m);
-        items.push(dto);
-      }
-      return { items };
+    async collectMediaFull({ chatId }) {
+      await ensureReady();
+      return { items: cacheAll(await fullFetch(chatId), chatId, 'full') };
     },
 
     async downloadOne({ id, mimetype }) {
       await ensureReady();
       let message = msgCache.get(id);
-      if (!message) {
-        // Cache miss (e.g. popup reopened) — look the message up by id.
-        try { message = await window.WPP.chat.getMessageById(id); } catch (_) { /* ignore */ }
-      }
+      if (!message) { try { message = await window.WPP.chat.getMessageById(id); } catch (_) { /* ignore */ } }
       const blob = await downloadBlob(message, id);
       if (!blob || blob.size === 0) throw new Error('Empty media');
-      const dataUrl = await blobToDataURL(blob);
-      return { dataUrl, mimetype: blob.type || mimetype || '', size: blob.size };
+      return { dataUrl: await blobToDataURL(blob), mimetype: blob.type || mimetype || '', size: blob.size };
+    },
+
+    async downloadZip({ chatId, chatName, kinds, from, to, limit, naming }) {
+      await ensureReady();
+      // Always download from the FULL history — never reuse the quick
+      // stats cache, which only holds the most recent window.
+      if (lastChatId !== chatId || cacheMode !== 'full' || !msgCache.size) {
+        cacheAll(await fullFetch(chatId), chatId, 'full');
+      }
+
+      const allow = new Set(kinds && kinds.length ? kinds : []);
+      const wantAll = !allow.size;
+      const list = [...msgCache.entries()]
+        .map(([, m]) => m)
+        .sort((a, b) => (msgTs(a) || 0) - (msgTs(b) || 0));
+
+      const entries = [];
+      let idx = 0;
+      let failed = 0;
+      for (const m of list) {
+        if (limit > 0 && entries.length >= limit) break;
+        const dto = serializeMsg(m);
+        if (!wantAll && !allow.has(dto.kind)) continue;
+        if ((from || to) && !inRange(dto.t, from, to)) continue;
+        idx += 1;
+        try {
+          const blob = await downloadBlob(m, dto.id);
+          if (!blob || !blob.size) { failed += 1; continue; }
+          const ext = extFromMime(blob.type || dto.mimetype);
+          const bytes = new Uint8Array(await blob.arrayBuffer());
+          entries.push({ name: makeName(dto, naming, chatName, idx, ext), bytes });
+        } catch (_) { failed += 1; }
+      }
+      if (!entries.length) return { count: 0, failed, zip: true };
+      const zip = makeZip(entries);
+      anchorDownload(new Blob([zip], { type: 'application/zip' }), `${sanitize(chatName || 'Chat', 60)}_media.zip`);
+      return { count: entries.length, failed, zip: true };
     }
   };
 
@@ -228,11 +425,8 @@
     const { id, action, args } = d;
     const fn = actions[action];
     if (!fn) { post(id, false, null, `Unknown engine action: ${action}`); return; }
-    try {
-      post(id, true, await fn(args || {}), null);
-    } catch (err) {
-      post(id, false, null, String((err && err.message) || err));
-    }
+    try { post(id, true, await fn(args || {}), null); }
+    catch (err) { post(id, false, null, String((err && err.message) || err)); }
   });
 
   function post(id, ok, result, error) {

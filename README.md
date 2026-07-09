@@ -139,11 +139,21 @@ Uses the bundled, open-source [`@wppconnect/wa-js`](https://github.com/wppconnec
   modules, and wa-js then fails to hook them. `wa-bridge.js` runs in that MAIN
   world; the always-present `wa-engine.js` (isolated world) relays between it
   and the popup/background.
-- It then lists every chat, walks the loaded history with
-  `WPP.chat.getMessages(chatId, { count: 10000 })`, and decrypts each selected
-  message (`message.downloadMedia()` with a `WPP.chat.downloadMedia(id)`
-  fallback). Decrypted blobs are named with your rules and pushed through the
-  same background download queue as everything else.
+- It lists every chat, then walks the **whole history** by paging
+  `WPP.chat.getMessages(chatId, { count, direction: 'before', id })` backwards
+  batch by batch (a quick single pull is used for the on-screen statistics),
+  and decrypts each selected message (`message.downloadMedia()` with a
+  `WPP.chat.downloadMedia(id)` fallback).
+- **Naming options**: use the **caption** as the filename, **append the
+  original filename**, and/or include the **date** (mix and match).
+- **Save as ZIP**: instead of individual files, the bridge decrypts the
+  selection, builds an uncompressed (store) ZIP in the page and saves it as a
+  single archive. Individual downloads otherwise go through the normal
+  background queue.
+
+> **Expired media is unrecoverable.** WhatsApp deletes older media from its
+> CDN; those messages return HTTP 410/404 and cannot be downloaded by any
+> tool — the engine skips them and reports the count as "unavailable/expired."
 
 > ⚠️ Engine mode uses WhatsApp's **undocumented internal APIs** — powerful
 > (whole-history export, no scrolling) but they change without notice and may
