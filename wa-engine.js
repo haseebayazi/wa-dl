@@ -186,6 +186,15 @@
     return { queued, failed, total: items.length };
   }
 
+  /** Export the whole chat's text (with date/time) to a .txt in the page. */
+  async function runExportText(opts) {
+    const { chatId, chatName, from, to } = opts;
+    const res = await call('exportText', {
+      chatId, chatName: chatName || cache.chatName || 'Chat', from, to
+    }, 900000);
+    return { count: (res && res.count) || 0, text: true };
+  }
+
   /** ZIP download: the bridge decrypts, zips and saves in the page. */
   async function runZip(opts) {
     const { chatId, chatName, types, from, to, limit, naming } = opts;
@@ -217,6 +226,8 @@
         return respond(getStats(msg.chatId, msg.chatName));
       case 'WAMD_ENGINE_DOWNLOAD':
         return respond(msg.zip ? runZip(msg) : runDownload(msg));
+      case 'WAMD_ENGINE_EXPORT_TEXT':
+        return respond(runExportText(msg));
       default:
         return false;
     }

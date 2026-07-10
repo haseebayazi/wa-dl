@@ -150,6 +150,10 @@ Uses the bundled, open-source [`@wppconnect/wa-js`](https://github.com/wppconnec
   selection, builds an uncompressed (store) ZIP in the page and saves it as a
   single archive. Individual downloads otherwise go through the normal
   background queue.
+- **Export chat text (.txt)**: walks the whole history and writes a plain-text
+  transcript — one line per message as `[YYYY-MM-DD HH:MM:SS] Sender: text`
+  ("You" for your own messages; media shown as `<image>` / `<document> name`
+  with any caption). Honors the date range.
 
 > **Expired media is unrecoverable.** WhatsApp deletes older media from its
 > CDN; those messages return HTTP 410/404 and cannot be downloaded by any
