@@ -135,6 +135,7 @@
     $('engine-reload-chats').addEventListener('click', loadEngineChats);
     $('engine-chat').addEventListener('change', loadEngineStats);
     $('engine-download').addEventListener('click', startEngineDownload);
+    $('engine-export-text').addEventListener('click', startExportText);
   }
 
   /** Populate the chat dropdown from the engine. */
@@ -164,6 +165,7 @@
     const sel = $('engine-chat');
     const chatId = sel.value;
     $('engine-download').disabled = true;
+    $('engine-export-text').disabled = !chatId; // text export needs only a chat
     $('engine-stats').classList.add('hidden');
     $('engine-range').textContent = '';
     if (!chatId) return;
@@ -231,6 +233,30 @@
       btn.disabled = false;
       btn.classList.remove('busy');
       refreshQueue();
+    }
+  }
+
+  /** Export the selected chat's full text transcript to a .txt file. */
+  async function startExportText() {
+    const sel = $('engine-chat');
+    const chatId = sel.value;
+    if (!chatId) return;
+    const chatName = sel.selectedOptions[0] ? sel.selectedOptions[0].dataset.name : '';
+    const from = $('e-from').value ? new Date(`${$('e-from').value}T00:00:00`).getTime() : null;
+    const to = $('e-to').value ? new Date(`${$('e-to').value}T23:59:59.999`).getTime() : null;
+
+    const btn = $('engine-export-text');
+    btn.disabled = true;
+    btn.classList.add('busy');
+    $('engine-note').textContent = 'Reading chat history and building the transcript…';
+    try {
+      const res = await sendToTab({ type: 'WAMD_ENGINE_EXPORT_TEXT', chatId, chatName, from, to });
+      $('engine-note').textContent = (res && res.ok)
+        ? `Saved transcript: ${res.result.count} message(s) → ${chatName || 'Chat'}_chat.txt`
+        : `Text export failed: ${res && res.error ? res.error : 'unknown error'}`;
+    } finally {
+      btn.disabled = false;
+      btn.classList.remove('busy');
     }
   }
 

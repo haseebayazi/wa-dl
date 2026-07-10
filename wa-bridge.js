@@ -113,6 +113,7 @@
   async function fullFetch(chatId, opts) {
     const batchSize = (opts && opts.batchSize) || 800;
     const maxBatches = (opts && opts.maxBatches) || 80;
+    const keep = (opts && opts.keep) || isMediaMsg; // default: media only
     const out = [];
     const seen = new Set();
     let anchor = '';
@@ -136,7 +137,7 @@
         if (!id || seen.has(id)) continue;
         seen.add(id);
         newCount += 1;
-        if (isMediaMsg(m)) out.push(m);
+        if (keep(m)) out.push(m);
       }
 
       // Cursor = oldest (min timestamp) message of the batch.
@@ -252,6 +253,41 @@
     if (to && ms > to) return false;
     return true;
   };
+
+  /** "YYYY-MM-DD HH:MM:SS" timestamp for the transcript. */
+  function fullStamp(t) {
+    const d = new Date(t * 1000);
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
+      `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  }
+
+  /**
+   * Format one message as a transcript line, or null to skip it.
+   * `[date time] Sender: text` — media shows a <type> marker plus any
+   * caption/filename; empty system/protocol messages are skipped.
+   */
+  function formatTextLine(m) {
+    const ts = msgTs(m);
+    if (!ts) return null;
+    const fromMe = (m.id && typeof m.id === 'object' && m.id.fromMe) || msgId(m).startsWith('true_');
+    const who = fromMe ? 'You' : (senderName(m) || 'Unknown');
+    const type = String(m.type || '').toLowerCase();
+
+    let body;
+    if (MEDIA_TYPES.has(type)) {
+      const label = type === 'ptt' ? 'voice' : type;
+      body = `<${label}>`;
+      if (m.caption) body += ` ${m.caption}`;
+      else if (m.filename) body += ` ${m.filename}`;
+    } else if (m.body) {
+      body = String(m.body);
+    } else if (m.subtitle) {
+      body = String(m.subtitle);
+    } else {
+      return null; // system / protocol message with no text
+    }
+    return `[${fullStamp(ts)}] ${who}: ${body}`;
+  }
 
   /* ------------------------------- ZIP ------------------------------- */
 
@@ -376,6 +412,30 @@
       const blob = await downloadBlob(message, id);
       if (!blob || blob.size === 0) throw new Error('Empty media');
       return { dataUrl: await blobToDataURL(blob), mimetype: blob.type || mimetype || '', size: blob.size };
+    },
+
+    async exportText({ chatId, chatName, from, to }) {
+      await ensureReady();
+      // Keep every message (not just media) for a full transcript.
+      const msgs = await fullFetch(chatId, { keep: () => true });
+      msgs.sort((a, b) => (msgTs(a) || 0) - (msgTs(b) || 0));
+
+      const lines = [];
+      let count = 0;
+      for (const m of msgs) {
+        const ts = msgTs(m);
+        if ((from || to) && ts && !inRange(ts, from, to)) continue;
+        const line = formatTextLine(m);
+        if (line) { lines.push(line); count += 1; }
+      }
+      const header =
+        `Chat: ${chatName || chatId}\n` +
+        `Exported: ${new Date().toString()}\n` +
+        `Messages: ${count}\n` +
+        '----------------------------------------\n\n';
+      const blob = new Blob([header + lines.join('\n') + '\n'], { type: 'text/plain;charset=utf-8' });
+      anchorDownload(blob, `${sanitize(chatName || 'Chat', 60)}_chat.txt`);
+      return { count };
     },
 
     async downloadZip({ chatId, chatName, kinds, from, to, limit, naming }) {
