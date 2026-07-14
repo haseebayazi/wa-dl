@@ -11,27 +11,35 @@
 /* ===== Theme tokens ===== */
 
 :root {
-  --accent: #00a884;
-  --accent-2: #008069;
-  --bg: linear-gradient(160deg, #eef7f4 0%, #dcefe8 55%, #cfe9df 100%);
-  --card: rgba(255, 255, 255, 0.62);
-  --card-border: rgba(255, 255, 255, 0.8);
-  --text: #14211d;
-  --muted: #5c6f68;
-  --chip: rgba(255, 255, 255, 0.55);
-  --input: rgba(255, 255, 255, 0.75);
-  --shadow: 0 8px 24px rgba(20, 60, 50, 0.12);
+  --accent: #5b4be0;
+  --accent-2: #7c3aed;
+  --accent-soft: rgba(91, 75, 224, 0.18);
+  --gold: #b8860b;
+  --gold-bg: rgba(245, 190, 60, 0.18);
+  --bg: linear-gradient(160deg, #f3f1ff 0%, #ebe8fb 55%, #e7ecff 100%);
+  --card: rgba(255, 255, 255, 0.66);
+  --card-border: rgba(255, 255, 255, 0.85);
+  --text: #1a1730;
+  --muted: #5f5b78;
+  --chip: rgba(255, 255, 255, 0.58);
+  --input: rgba(255, 255, 255, 0.78);
+  --shadow: 0 8px 24px rgba(50, 40, 110, 0.14);
   --danger: #c0392b;
   --warn-bg: rgba(255, 196, 0, 0.15);
 }
 
 /* Dark tokens, applied for explicit dark theme… */
 html[data-theme="dark"] {
-  --bg: linear-gradient(160deg, #0d1a17 0%, #10221d 55%, #0c1c18 100%);
+  --accent: #8b7bff;
+  --accent-2: #a78bfa;
+  --accent-soft: rgba(139, 123, 255, 0.22);
+  --gold: #f5c451;
+  --gold-bg: rgba(245, 190, 60, 0.16);
+  --bg: linear-gradient(160deg, #14121f 0%, #171326 55%, #110f20 100%);
   --card: rgba(255, 255, 255, 0.06);
   --card-border: rgba(255, 255, 255, 0.12);
-  --text: #e7f2ee;
-  --muted: #8fa8a0;
+  --text: #ece9f7;
+  --muted: #9a95b5;
   --chip: rgba(255, 255, 255, 0.08);
   --input: rgba(255, 255, 255, 0.08);
   --shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
@@ -42,11 +50,16 @@ html[data-theme="dark"] {
 /* …and for system dark when the user chose "auto". */
 @media (prefers-color-scheme: dark) {
   html:not([data-theme="light"]) {
-    --bg: linear-gradient(160deg, #0d1a17 0%, #10221d 55%, #0c1c18 100%);
+    --accent: #8b7bff;
+    --accent-2: #a78bfa;
+    --accent-soft: rgba(139, 123, 255, 0.22);
+    --gold: #f5c451;
+    --gold-bg: rgba(245, 190, 60, 0.16);
+    --bg: linear-gradient(160deg, #14121f 0%, #171326 55%, #110f20 100%);
     --card: rgba(255, 255, 255, 0.06);
     --card-border: rgba(255, 255, 255, 0.12);
-    --text: #e7f2ee;
-    --muted: #8fa8a0;
+    --text: #ece9f7;
+    --muted: #9a95b5;
     --chip: rgba(255, 255, 255, 0.08);
     --input: rgba(255, 255, 255, 0.08);
     --shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
@@ -257,7 +270,7 @@ select:focus, input:focus { border-color: var(--accent); }
   background: var(--chip);
   color: var(--muted);
 }
-.badge.ok  { background: rgba(0, 168, 132, 0.18); color: var(--accent); }
+.badge.ok  { background: var(--accent-soft); color: var(--accent); }
 .badge.err { background: rgba(255, 99, 99, 0.15); color: var(--danger); }
 
 #engine-chat { max-width: 100%; }
@@ -333,8 +346,8 @@ select:focus, input:focus { border-color: var(--accent); }
 /* Queue state badges */
 .state { flex: none; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
 .state-queued    { background: var(--chip); color: var(--muted); }
-.state-active    { background: rgba(0, 168, 132, 0.18); color: var(--accent); animation: pulse 1.2s infinite; }
-.state-completed { background: rgba(0, 168, 132, 0.18); color: var(--accent); }
+.state-active    { background: var(--accent-soft); color: var(--accent); animation: pulse 1.2s infinite; }
+.state-completed { background: var(--accent-soft); color: var(--accent); }
 .state-failed    { background: rgba(255, 99, 99, 0.15); color: var(--danger); }
 .state-duplicate { background: var(--warn-bg); color: var(--muted); }
 .state-canceled  { background: var(--chip); color: var(--muted); }
@@ -388,3 +401,85 @@ select:focus, input:focus { border-color: var(--accent); }
   .card, .list li { animation: none; }
   .icon-btn:hover { transform: none; }
 }
+
+/* ===== Account / upgrade card ===== */
+
+.account { padding: 12px 14px; }
+.acct-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.acct-info b { font-size: 14px; }
+.acct-info b.is-pro {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+}
+.acct-info p { margin-top: 1px; }
+
+.btn-upgrade {
+  flex: none;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  padding: 8px 18px;
+  font: 700 13px/1 inherit;
+  cursor: pointer;
+  box-shadow: 0 4px 14px var(--accent-soft);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.btn-upgrade:hover { transform: translateY(-1px); box-shadow: 0 6px 18px var(--accent-soft); }
+.btn-upgrade:active { transform: scale(0.97); }
+
+.quota-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--chip);
+  overflow: hidden;
+  margin: 10px 0 6px;
+}
+#quota-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  transition: width 0.4s ease;
+}
+#quota-fill.full { background: linear-gradient(90deg, #e0803a, var(--danger)); }
+
+#acct-pitch { margin-top: 6px; line-height: 1.4; }
+
+.link { display: inline-block; margin-top: 8px; color: var(--accent); text-decoration: none; cursor: pointer; }
+.link:hover { text-decoration: underline; }
+
+/* Plan tag next to the wordmark */
+.plan-tag {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  vertical-align: middle;
+  padding: 2px 6px;
+  border-radius: 6px;
+  color: #fff !important;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+}
+
+/* ===== Pro badges + locked controls ===== */
+
+.pro-badge {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-transform: none;
+  padding: 1px 6px;
+  border-radius: 6px;
+  color: var(--gold);
+  background: var(--gold-bg);
+  border: 1px solid var(--gold-bg);
+  vertical-align: middle;
+}
+
+/* Free users: dim + disable interaction on Pro-only groups. */
+[data-pro].locked {
+  opacity: 0.55;
+  filter: grayscale(0.25);
+}
+[data-pro].locked input,
+[data-pro].locked summary { cursor: not-allowed; }

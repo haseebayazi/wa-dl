@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "WA Media Downloader Pro",
-  "description": "Download images, videos, voice notes, documents, GIFs and stickers from WhatsApp Web. 100% local, no tracking.",
+  "name": "MediaVault - WhatsApp Media & Chat Downloader",
+  "description": "Download & back up images, videos, voice notes, documents and full chat transcripts from WhatsApp Web. Fast, private, on-device.",
   "version": "1.0.0",
   "minimum_chrome_version": "116",
 
@@ -17,7 +17,7 @@
   },
 
   "action": {
-    "default_title": "WA Media Downloader Pro",
+    "default_title": "MediaVault for WhatsApp Web",
     "default_popup": "popup/popup.html",
     "default_icon": {
       "16": "assets/icons/icon16.png",
@@ -39,7 +39,8 @@
   ],
 
   "host_permissions": [
-    "https://web.whatsapp.com/*"
+    "https://web.whatsapp.com/*",
+    "https://api.gumroad.com/*"
   ],
 
   "content_scripts": [

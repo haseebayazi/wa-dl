@@ -2,7 +2,7 @@
  * utils/selectors.js
  * ------------------------------------------------------------------
  * Single source of truth for every WhatsApp Web DOM selector used by
- * WA Media Downloader Pro.
+ * MediaVault.
  *
  * WhatsApp Web's DOM is not a public API and changes over time.
  * To keep maintenance cheap, every "role" the extension needs is

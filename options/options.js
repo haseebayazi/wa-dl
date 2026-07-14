@@ -10,7 +10,7 @@
 (function () {
   'use strict';
 
-  const { helpers, storage } = globalThis.WAMD;
+  const { helpers, storage, license } = globalThis.WAMD;
 
   /** Shorthand for document.getElementById. */
   const $ = (id) => document.getElementById(id);
@@ -38,6 +38,67 @@
     applyTheme(settings.darkMode);
     wireEvents();
     refreshStorageInfo();
+    refreshLicense();
+  }
+
+  /* ============================ Licensing ============================ */
+
+  /** Load the licence status and render the Pro card + feature locks. */
+  async function refreshLicense() {
+    const res = await send({ type: 'WAMD_LICENSE_STATUS' });
+    const s = (res && res.ok) ? res.result : { pro: false, used: 0, limit: license.FREE_LIMIT };
+    renderLicense(s);
+    applyProLocks(s.pro);
+  }
+
+  /**
+   * Render the Pro card for the given licence status.
+   * @param {object} s  licence status snapshot
+   */
+  function renderLicense(s) {
+    const p = license.PRICING;
+    $('plan-monthly').textContent = `${p.monthly.price}${p.monthly.period}`;
+    $('plan-lifetime').innerHTML = `${p.lifetime.launch} <s>${p.lifetime.price}</s>`;
+
+    if (s.pro) {
+      $('lic-status').textContent = s.plan === 'monthly'
+        ? '✓ Pro active — monthly subscription. Unlimited downloads unlocked.'
+        : '✓ Pro active — lifetime licence. Unlimited downloads unlocked.';
+      $('lic-status').classList.add('ok');
+      $('lic-free').classList.add('hidden');
+      $('lic-pro').classList.remove('hidden');
+    } else {
+      const left = Math.max(0, s.limit - s.used);
+      $('lic-status').textContent = `Free plan — ${left} of ${s.limit} downloads left.`;
+      $('lic-status').classList.remove('ok');
+      $('lic-free').classList.remove('hidden');
+      $('lic-pro').classList.add('hidden');
+    }
+  }
+
+  /**
+   * Enable/disable the Pro-only settings (custom naming + folder
+   * organisation) based on the licence.
+   * @param {boolean} pro
+   */
+  function applyProLocks(pro) {
+    // Custom naming choices are Pro; keep the free date-based default open.
+    const naming = $('namingStyle');
+    for (const opt of naming.options) {
+      if (opt.value !== 'chat_datetime') opt.disabled = !pro;
+    }
+    if (!pro && naming.value !== 'chat_datetime') {
+      naming.value = 'chat_datetime';
+      save({ namingStyle: 'chat_datetime' });
+    }
+    // Folder organisation is Pro.
+    $('organizeFolders').disabled = !pro;
+    for (const group of document.querySelectorAll('[data-pro]')) {
+      group.classList.toggle('locked', !pro);
+    }
+    for (const badge of document.querySelectorAll('.pro-badge')) {
+      badge.style.display = pro ? 'none' : '';
+    }
   }
 
   /** Attach change listeners that auto-save each control. */
@@ -61,6 +122,21 @@
       save({ maxConcurrent: parseInt($('maxConcurrent').value, 10) });
     });
 
+    // Licensing actions.
+    $('btn-buy').addEventListener('click', () => {
+      chrome.tabs.create({ url: license.CONFIG.checkoutUrl });
+    });
+    $('btn-activate').addEventListener('click', activateKey);
+    $('lic-key').addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter') { ev.preventDefault(); activateKey(); }
+    });
+    $('btn-deactivate').addEventListener('click', async () => {
+      if (!confirm('Deactivate Pro on this device?')) return;
+      await send({ type: 'WAMD_LICENSE_DEACTIVATE' });
+      showStatus('Pro deactivated');
+      refreshLicense();
+    });
+
     // Destructive actions.
     $('btn-clear-history').addEventListener('click', async () => {
       if (!confirm('Clear the entire download history? Duplicate detection starts over.')) return;
@@ -73,6 +149,33 @@
       await send({ type: 'WAMD_RESET_STATS' });
       showStatus('Statistics reset');
     });
+  }
+
+  /**
+   * Verify the pasted licence key with the payment provider and unlock
+   * Pro on success.
+   */
+  async function activateKey() {
+    const key = $('lic-key').value.trim();
+    const msg = $('lic-msg');
+    const btn = $('btn-activate');
+    if (!key) { msg.textContent = 'Paste your licence key first.'; msg.className = 'lic-msg small err'; return; }
+
+    btn.disabled = true;
+    msg.textContent = 'Checking your licence…';
+    msg.className = 'lic-msg small';
+    const res = await send({ type: 'WAMD_LICENSE_VERIFY', key });
+    btn.disabled = false;
+
+    if (res && res.ok) {
+      msg.textContent = '✓ Activated. Enjoy MediaVault Pro!';
+      msg.className = 'lic-msg small ok';
+      $('lic-key').value = '';
+      refreshLicense();
+    } else {
+      msg.textContent = (res && res.error) ? res.error : 'Could not activate that key.';
+      msg.className = 'lic-msg small err';
+    }
   }
 
   /* ============================ Persistence ============================ */

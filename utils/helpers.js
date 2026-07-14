@@ -2,7 +2,7 @@
  * utils/helpers.js
  * ------------------------------------------------------------------
  * Pure, dependency-free utility functions shared by every layer of
- * WA Media Downloader Pro (content script, service worker, popup,
+ * MediaVault (content script, service worker, popup,
  * options page). No DOM access and no chrome.* calls in this file so
  * it stays trivially testable.
  *

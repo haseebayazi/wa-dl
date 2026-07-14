@@ -20,10 +20,11 @@
 'use strict';
 
 // Shared classic-script modules (same files the content script uses).
-importScripts('utils/helpers.js', 'utils/storage.js');
+importScripts('utils/helpers.js', 'utils/storage.js', 'utils/license.js');
 
 const helpers = globalThis.WAMD.helpers;
 const store = globalThis.WAMD.storage;
+const license = globalThis.WAMD.license;
 
 /** Maximum automatic retry attempts per failed item. */
 const MAX_RETRIES = 3;
@@ -36,6 +37,35 @@ const batches = new Map(); // batchId → {total, done, failed, duplicates}
 
 /** Number of downloads currently handed to chrome.downloads. */
 let activeCount = 0;
+
+/* ============================ Free-tier quota ============================ */
+
+/**
+ * Serialize free-quota reservations so parallel enqueues can't race past
+ * the limit (e.g. a bulk batch prepared with Promise.all). Each call runs
+ * after the previous one settles.
+ *
+ * @returns {Promise<object>} result of license.reserve()
+ */
+let reserveChain = Promise.resolve();
+function reserveSlot() {
+  const p = reserveChain.then(() => license.reserve());
+  reserveChain = p.then(() => {}, () => {});
+  return p;
+}
+
+/**
+ * Notify the user (once, if notifications are on) that the free download
+ * allowance is spent. The popup's upgrade card is the always-visible cue.
+ *
+ * @param {object} settings
+ * @param {object} slot  failed license.reserve() result
+ */
+function notifyQuota(settings, slot) {
+  notify('Free download limit reached',
+    `You've used all ${slot.limit} free downloads. Upgrade to MediaVault Pro for unlimited saving.`,
+    settings);
+}
 
 /* ================================ Queue ================================ */
 
@@ -61,9 +91,21 @@ async function enqueue(payload) {
     }
   }
 
+  // Free-tier gate: consume one of the 50 lifetime free downloads (Pro is
+  // unlimited and never counted). Over the limit → refuse and prompt upgrade.
+  // Batch accounting for refused items is handled by the caller, which stops
+  // the batch and adjusts its total — so we don't touch the batch here.
+  const slot = await reserveSlot();
+  if (!slot.ok) {
+    notifyQuota(settings, slot);
+    broadcastQueue();
+    return { status: 'quota_exceeded', id: payload.id, limit: slot.limit, remaining: 0 };
+  }
+
   queue.set(payload.id, {
     ...payload,
     state: 'queued',       // queued | active | completed | failed | duplicate | canceled
+    reserved: !slot.pro,   // true when a free slot was consumed (refund on failure)
     attempts: 0,
     error: null,
     addedAt: Date.now()
@@ -131,6 +173,8 @@ async function runItem(item, settings) {
     } else {
       item.state = 'failed';
       item.error = err && err.message ? err.message : String(err);
+      // A reserved free slot shouldn't be spent on a download that failed.
+      if (item.reserved) { item.reserved = false; await license.refund(); }
       trackBatch(item.batchId, 'failed');
       await maybeNotify(settings, 'failed', item);
     }
@@ -190,6 +234,7 @@ async function cancelItem(id) {
   }
   item.state = 'canceled';
   item.url = null;
+  if (item.reserved) { item.reserved = false; await license.refund(); }
   broadcastQueue();
 }
 
@@ -337,6 +382,59 @@ function notify(title, message, settings) {
   }, () => { void chrome.runtime.lastError; /* notification errors are non-fatal */ });
 }
 
+/* ============================ Licensing ============================ */
+
+/**
+ * Verify a licence key with the configured payment provider and, on
+ * success, unlock Pro. Uses Gumroad's public verify endpoint by default
+ * (no secret key required); works for both one-time and subscription
+ * licences. See utils/license.js CONFIG and LAUNCH.md.
+ *
+ * @param {string} key  the licence key the user pasted
+ * @returns {Promise<{pro: boolean, plan: string}>}
+ */
+async function verifyLicense(key) {
+  const cfg = license.CONFIG;
+  key = String(key || '').trim();
+  if (!key) throw new Error('Enter your licence key.');
+  if (!cfg.productPermalink || cfg.productPermalink.startsWith('REPLACE')) {
+    throw new Error('Licence activation is not set up yet. Use the Buy button to purchase, or see LAUNCH.md.');
+  }
+
+  const body = new URLSearchParams({
+    product_permalink: cfg.productPermalink,
+    license_key: key,
+    increment_uses_count: 'false'
+  });
+  let data;
+  try {
+    const resp = await fetch(cfg.verifyUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body
+    });
+    data = await resp.json().catch(() => ({}));
+  } catch (err) {
+    throw new Error('Could not reach the licence server. Check your connection and try again.');
+  }
+  if (!data || !data.success) {
+    throw new Error((data && data.message) || 'Licence key not recognised.');
+  }
+
+  const p = data.purchase || {};
+  if (p.refunded || p.disputed || p.chargebacked) {
+    throw new Error('This purchase was refunded, so the licence is inactive.');
+  }
+  const ended = p.subscription_cancelled_at || p.subscription_failed_at || p.subscription_ended_at;
+  if (ended && new Date(ended).getTime() < Date.now()) {
+    throw new Error('This subscription has ended — please renew to keep Pro.');
+  }
+
+  const plan = p.subscription_id ? 'monthly' : 'lifetime';
+  await license.activate(plan, key);
+  return { pro: true, plan };
+}
+
 /* ============================ Message router ============================ */
 
 /**
@@ -355,6 +453,21 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   switch (msg && msg.type) {
     case 'WAMD_ENQUEUE':
       return respond(enqueue(msg.payload));
+
+    case 'WAMD_RESERVE':
+      // Free-quota reservation for the in-page (oversized) download path,
+      // which bypasses the queue. Content asks before saving so free users
+      // can't exceed the limit on large files either.
+      return respond(reserveSlot());
+
+    case 'WAMD_LICENSE_STATUS':
+      return respond(license.getStatus());
+
+    case 'WAMD_LICENSE_VERIFY':
+      return respond(verifyLicense(msg.key));
+
+    case 'WAMD_LICENSE_DEACTIVATE':
+      return respond(license.deactivate());
 
     case 'WAMD_REGISTER_BATCH':
       registerBatch(msg.batchId, msg.total);

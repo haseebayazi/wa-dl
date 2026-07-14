@@ -187,7 +187,7 @@
     floatButton = document.createElement('button');
     floatButton.className = 'wamd-fab';
     floatButton.type = 'button';
-    floatButton.title = 'Download media (WA Media Downloader Pro)';
+    floatButton.title = 'Download media (MediaVault)';
     floatButton.innerHTML =
       '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">' +
       '<path fill="currentColor" d="M12 3a1 1 0 0 1 1 1v9.17l3.09-3.09a1 1 0 1 1 1.41 1.42l-4.79 4.79a1 1 0 0 1-1.42 0L6.5 11.5a1 1 0 1 1 1.41-1.42L11 13.17V4a1 1 0 0 1 1-1Z"/>' +
@@ -287,6 +287,13 @@
       });
 
       if (payload.tooLarge) {
+        // Oversized files bypass the queue, so enforce the free quota here
+        // by reserving a slot in the background first.
+        const gate = await send({ type: 'WAMD_RESERVE' });
+        if (gate && gate.result && gate.result.ok === false) {
+          if (!batchId) toast(`Free limit reached (${gate.result.limit}). Upgrade to MediaVault Pro for unlimited downloads.`, 'error');
+          return 'quota';
+        }
         // Oversized for messaging — save directly from the page and
         // report to the background for history/stats only.
         download.downloadInPage(payload.blob, payload.filename);
@@ -307,6 +314,13 @@
       if (batchId) payload.batchId = batchId;
       const res = await send({ type: 'WAMD_ENQUEUE', payload });
       const status = res && res.result ? res.result.status : 'error';
+      if (status === 'quota_exceeded') {
+        if (!batchId) {
+          const limit = (res && res.result && res.result.limit) || 50;
+          toast(`Free limit reached (${limit}). Upgrade to MediaVault Pro for unlimited downloads.`, 'error');
+        }
+        return 'quota';
+      }
       if (!batchId) {
         if (status === 'duplicate') toast('Already downloaded — duplicate skipped');
         else toast('Download queued ✓');
@@ -369,18 +383,26 @@
     }
 
     let queued = 0;
-    let unreachable = 0; // items that never reached the background queue
+    let trackedByBatch = 0; // items the background batch will actually settle
+    let quotaHit = false;
     // Sequential preparation keeps memory flat (one blob at a time);
     // the background queue provides the parallelism.
     for (const item of downloadable) {
       const state = await downloadElement(item.el, item.kind, batchId);
+      // Hitting the free limit stops the run — every remaining item would be
+      // refused, and preparing their blobs would be wasted work.
+      if (state === 'quota') { quotaHit = true; break; }
+      // 'queued' and 'duplicate' are accounted for inside the background batch;
+      // 'large'/'error' never reached it.
+      if (state === 'queued' || state === 'duplicate') trackedByBatch += 1;
       if (state === 'queued' || state === 'large' || state === 'duplicate') queued += 1;
-      if (state === 'error' || state === 'large') unreachable += 1;
     }
-    // Shrink the batch total for items the queue never saw, so the
-    // "Queue complete" summary still fires.
-    if (unreachable > 0) {
-      await send({ type: 'WAMD_BATCH_ADJUST', batchId, delta: -unreachable });
+    // Shrink the batch total for every item the queue never saw (oversized,
+    // errored, or skipped after the quota was reached) so the "Queue
+    // complete" summary still fires.
+    const notTracked = downloadable.length - trackedByBatch;
+    if (notTracked > 0) {
+      await send({ type: 'WAMD_BATCH_ADJUST', batchId, delta: -notTracked });
     }
 
     // Documents can't be read as blobs from the list; trigger
@@ -394,8 +416,9 @@
     toast(`Bulk download: ${queued} queued` +
       (docsClicked ? `, ${docsClicked} documents via WhatsApp` : '') +
       (skipped ? `, ${skipped} not loaded` : '') +
-      (undated ? `, ${undated} skipped (no date)` : ''));
-    return { queued, documents: docsClicked, skipped, undated, total: items.length };
+      (undated ? `, ${undated} skipped (no date)` : '') +
+      (quotaHit ? ' · free limit reached — upgrade for the rest' : ''));
+    return { queued, documents: docsClicked, skipped, undated, quotaHit, total: items.length };
   }
 
   /**
@@ -514,6 +537,7 @@
     let documents = 0;
     let stagnant = 0;
     let lastMilestone = 0;
+    let quotaHit = false;
 
     /** Download every newly-available item currently in view. */
     const harvestVisible = async () => {
@@ -533,6 +557,7 @@
         if (!src || seen.has(src)) continue; // not decrypted yet, or already taken
         seen.add(src);
         const state = await downloadElement(it.el, it.kind, batchId);
+        if (state === 'quota') { quotaHit = true; return; }
         if (state === 'queued' || state === 'duplicate' || state === 'large') queued += 1;
       }
     };
@@ -544,6 +569,7 @@
 
     while (Date.now() < deadline) {
       await harvestVisible();
+      if (quotaHit) break;
       if (limit > 0 && queued + documents >= limit) break;
       const done = queued + documents;
       if (done >= lastMilestone + 25) {
@@ -567,10 +593,11 @@
       }
     }
     // One final sweep of whatever is now in view.
-    await harvestVisible();
+    if (!quotaHit) await harvestVisible();
 
-    toast(`Auto-load done: ${queued} media queued` + (documents ? `, ${documents} docs` : ''));
-    return { queued, documents, total: queued + documents };
+    toast(`Auto-load done: ${queued} media queued` + (documents ? `, ${documents} docs` : '') +
+      (quotaHit ? ' · free limit reached — upgrade for the rest' : ''));
+    return { queued, documents, quotaHit, total: queued + documents };
   }
 
   /* ============================== Toasts ============================== */

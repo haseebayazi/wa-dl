@@ -9,25 +9,33 @@
 /* ===== Theme tokens (kept in sync with popup.css) ===== */
 
 :root {
-  --accent: #00a884;
-  --accent-2: #008069;
-  --bg: linear-gradient(160deg, #eef7f4 0%, #dcefe8 55%, #cfe9df 100%);
-  --card: rgba(255, 255, 255, 0.62);
-  --card-border: rgba(255, 255, 255, 0.8);
-  --text: #14211d;
-  --muted: #5c6f68;
-  --chip: rgba(255, 255, 255, 0.55);
-  --input: rgba(255, 255, 255, 0.75);
-  --shadow: 0 8px 24px rgba(20, 60, 50, 0.12);
+  --accent: #5b4be0;
+  --accent-2: #7c3aed;
+  --accent-soft: rgba(91, 75, 224, 0.18);
+  --gold: #b8860b;
+  --gold-bg: rgba(245, 190, 60, 0.18);
+  --bg: linear-gradient(160deg, #f3f1ff 0%, #ebe8fb 55%, #e7ecff 100%);
+  --card: rgba(255, 255, 255, 0.66);
+  --card-border: rgba(255, 255, 255, 0.85);
+  --text: #1a1730;
+  --muted: #5f5b78;
+  --chip: rgba(255, 255, 255, 0.58);
+  --input: rgba(255, 255, 255, 0.78);
+  --shadow: 0 8px 24px rgba(50, 40, 110, 0.14);
   --danger: #c0392b;
 }
 
 html[data-theme="dark"] {
-  --bg: linear-gradient(160deg, #0d1a17 0%, #10221d 55%, #0c1c18 100%);
+  --accent: #8b7bff;
+  --accent-2: #a78bfa;
+  --accent-soft: rgba(139, 123, 255, 0.22);
+  --gold: #f5c451;
+  --gold-bg: rgba(245, 190, 60, 0.16);
+  --bg: linear-gradient(160deg, #14121f 0%, #171326 55%, #110f20 100%);
   --card: rgba(255, 255, 255, 0.06);
   --card-border: rgba(255, 255, 255, 0.12);
-  --text: #e7f2ee;
-  --muted: #8fa8a0;
+  --text: #ece9f7;
+  --muted: #9a95b5;
   --chip: rgba(255, 255, 255, 0.08);
   --input: rgba(255, 255, 255, 0.08);
   --shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
@@ -36,11 +44,16 @@ html[data-theme="dark"] {
 
 @media (prefers-color-scheme: dark) {
   html:not([data-theme="light"]) {
-    --bg: linear-gradient(160deg, #0d1a17 0%, #10221d 55%, #0c1c18 100%);
+    --accent: #8b7bff;
+    --accent-2: #a78bfa;
+    --accent-soft: rgba(139, 123, 255, 0.22);
+    --gold: #f5c451;
+    --gold-bg: rgba(245, 190, 60, 0.16);
+    --bg: linear-gradient(160deg, #14121f 0%, #171326 55%, #110f20 100%);
     --card: rgba(255, 255, 255, 0.06);
     --card-border: rgba(255, 255, 255, 0.12);
-    --text: #e7f2ee;
-    --muted: #8fa8a0;
+    --text: #ece9f7;
+    --muted: #9a95b5;
     --chip: rgba(255, 255, 255, 0.08);
     --input: rgba(255, 255, 255, 0.08);
     --shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
@@ -51,6 +64,8 @@ html[data-theme="dark"] {
 /* ===== Layout ===== */
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
+
+.hidden { display: none !important; }
 
 html { min-height: 100%; background: var(--bg); }
 
@@ -200,3 +215,70 @@ input[type="range"] { accent-color: var(--accent); }
 @media (prefers-reduced-motion: reduce) {
   .slider::after, .btn, .save-status { transition: none; }
 }
+
+/* ===== Primary / wide buttons (used by the Pro card) ===== */
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #fff;
+  border-color: transparent;
+}
+.btn-wide { display: block; width: 100%; }
+
+/* ===== MediaVault Pro card ===== */
+
+.pro-card { border: 1px solid var(--accent-soft); }
+.pro-card h2 { color: var(--accent); }
+
+#lic-status { font-weight: 600; margin-bottom: 12px; }
+#lic-status.ok { color: var(--accent); }
+
+.plans { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 14px 0; }
+.plan {
+  position: relative;
+  border: 1px solid var(--card-border);
+  background: var(--chip);
+  border-radius: 14px;
+  padding: 14px 12px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.plan.featured { border-color: var(--accent); box-shadow: 0 6px 20px var(--accent-soft); }
+.plan b { font-size: 15px; }
+.plan .price { font-size: 18px; font-weight: 800; color: var(--accent); }
+.plan .price s { font-size: 13px; font-weight: 400; color: var(--muted); }
+.plan em { font-style: normal; color: var(--muted); font-size: 12px; }
+.ribbon {
+  position: absolute;
+  top: -10px; left: 50%; transform: translateX(-50%);
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #fff;
+  font-size: 10px; font-weight: 800; letter-spacing: 0.4px;
+  padding: 3px 10px; border-radius: 999px; white-space: nowrap;
+}
+
+.lic-activate { display: flex; gap: 8px; margin-top: 14px; }
+.lic-activate input { flex: 1; }
+.lic-msg { margin-top: 8px; min-height: 1em; }
+.lic-msg.ok { color: var(--accent); }
+.lic-msg.err { color: var(--danger); }
+
+#lic-pro .btn-danger { margin-bottom: 6px; }
+
+/* ===== Pro badges + locked settings ===== */
+
+.pro-badge {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  padding: 1px 7px;
+  border-radius: 6px;
+  color: var(--gold);
+  background: var(--gold-bg);
+  vertical-align: middle;
+}
+[data-pro].locked { opacity: 0.6; }
+[data-pro].locked select,
+[data-pro].locked input { cursor: not-allowed; }

@@ -1,27 +1,66 @@
 <!DOCTYPE html>
 <!--
   options/options.html
-  Full settings page of WA Media Downloader Pro. Every control maps
-  1:1 to a key in WAMD.storage.DEFAULT_SETTINGS; options.js handles
-  load/save and the maintenance actions at the bottom.
+  Full settings page of MediaVault. Every control maps 1:1 to a key in
+  WAMD.storage.DEFAULT_SETTINGS; options.js handles load/save, licence
+  activation and the maintenance actions at the bottom.
 -->
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="color-scheme" content="light dark" />
-  <title>WA Media Downloader Pro — Settings</title>
+  <title>MediaVault — Settings</title>
   <link rel="stylesheet" href="options.css" />
 </head>
 <body>
   <main class="shell">
     <header class="topbar">
-      <img src="../assets/icons/icon48.png" alt="" width="40" height="40" />
+      <img src="../assets/icons/icon48.png" alt="MediaVault" width="40" height="40" />
       <div>
-        <h1>WA Media Downloader <span>Pro</span></h1>
+        <h1>MediaVault</h1>
         <p class="muted">Settings — everything is stored locally / in your browser sync profile.</p>
       </div>
     </header>
+
+    <!-- MediaVault Pro -->
+    <section class="card pro-card" id="pro-card">
+      <h2>MediaVault Pro</h2>
+      <p id="lic-status" class="muted">Checking licence…</p>
+
+      <div id="lic-free">
+        <p class="muted small">Unlock <b>unlimited downloads</b> plus every power feature:
+          whole-chat history export, Save-as-ZIP, chat text (.txt) export, date &amp;
+          sender filters, auto-scroll loading, folder organisation and custom file naming.</p>
+
+        <div class="plans">
+          <div class="plan">
+            <b>Monthly</b>
+            <span id="plan-monthly" class="price"></span>
+            <em>cancel anytime</em>
+          </div>
+          <div class="plan featured">
+            <span class="ribbon">Best value</span>
+            <b>Lifetime</b>
+            <span id="plan-lifetime" class="price"></span>
+            <em id="plan-lifetime-note">one-time payment</em>
+          </div>
+        </div>
+
+        <button id="btn-buy" class="btn btn-primary btn-wide">Get MediaVault Pro</button>
+
+        <div class="lic-activate">
+          <input id="lic-key" type="text" placeholder="Already bought? Paste your licence key" autocomplete="off" spellcheck="false" />
+          <button id="btn-activate" class="btn">Activate</button>
+        </div>
+        <p id="lic-msg" class="lic-msg small"></p>
+      </div>
+
+      <div id="lic-pro" class="hidden">
+        <button id="btn-deactivate" class="btn btn-danger">Deactivate on this device</button>
+        <p class="muted small">Removes the licence from this browser only. You can re-activate anytime with your key.</p>
+      </div>
+    </section>
 
     <!-- Downloads -->
     <section class="card">
@@ -32,22 +71,22 @@
         <input id="downloadFolder" type="text" placeholder="WhatsApp" maxlength="60" />
       </label>
 
-      <label class="field">
-        <span>File naming format</span>
+      <label class="field" data-pro="1">
+        <span>File naming format <span class="pro-badge">PRO</span></span>
         <select id="namingStyle">
           <option value="chat_datetime">ChatName_YYYY-MM-DD_HH-MM-SS.jpg</option>
           <option value="sender_messageid">Sender_MessageID.mp4</option>
           <option value="caption">Caption / document name (falls back to date)</option>
         </select>
-        <em class="small">Uses the image/video caption or a document's own filename.
-          Media sent without a caption falls back to the date format. Documents
-          downloaded through WhatsApp keep WhatsApp's filename.</em>
+        <em class="small">Custom naming is a Pro feature. Uses the image/video caption or a
+          document's own filename; media sent without a caption falls back to the date
+          format. Documents downloaded through WhatsApp keep WhatsApp's filename.</em>
       </label>
 
-      <label class="toggle">
+      <label class="toggle" data-pro="1">
         <input id="organizeFolders" type="checkbox" />
         <span class="slider"></span>
-        <span>Organize into folders <em>WhatsApp/Chat/Images…</em></span>
+        <span>Organize into folders <span class="pro-badge">PRO</span> <em>WhatsApp/Chat/Images…</em></span>
       </label>
 
       <label class="toggle">
@@ -103,9 +142,10 @@
     <!-- Privacy -->
     <section class="card">
       <h2>Privacy</h2>
-      <p class="muted">This extension never uploads anything. There is no analytics, no
-        tracking and no external server. Media is read from your open WhatsApp Web tab
-        and saved straight to your disk.</p>
+      <p class="muted">Your messages and media never leave your device. There is no analytics
+        and no tracking; media is read from your open WhatsApp Web tab and saved straight to
+        your disk. The only network request MediaVault makes is a licence check to the
+        payment provider when you activate Pro — it sends just your licence key, nothing else.</p>
     </section>
 
     <p id="save-status" class="save-status" role="status"></p>
@@ -113,6 +153,7 @@
 
   <script src="../utils/helpers.js"></script>
   <script src="../utils/storage.js"></script>
+  <script src="../utils/license.js"></script>
   <script src="options.js"></script>
 </body>
 </html>
