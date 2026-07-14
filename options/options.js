@@ -10,7 +10,7 @@
 (function () {
   'use strict';
 
-  const { helpers, storage, license } = globalThis.WAMD;
+  const { helpers, storage, license, config } = globalThis.WAMD;
 
   /** Shorthand for document.getElementById. */
   const $ = (id) => document.getElementById(id);
@@ -59,6 +59,7 @@
     const p = license.PRICING;
     $('plan-monthly').textContent = `${p.monthly.price}${p.monthly.period}`;
     $('plan-lifetime').innerHTML = `${p.lifetime.launch} <s>${p.lifetime.price}</s>`;
+    $('pro-feature-list').textContent = `${config.proFeaturesLong}.`;
 
     if (s.pro) {
       $('lic-status').textContent = s.plan === 'monthly'

@@ -16,7 +16,7 @@
 (function () {
   'use strict';
 
-  const { helpers, storage, license } = globalThis.WAMD;
+  const { helpers, storage, license, config } = globalThis.WAMD;
 
   /** Shorthand for document.getElementById. */
   const $ = (id) => document.getElementById(id);
@@ -50,7 +50,14 @@
       runSearch('')
     ]);
 
-    if (onSite) engineInit();
+    // Engine mode (whole-history export) is a v2-only feature. In the
+    // DOM-only (v1) build it is disabled and its card is hidden.
+    if (config.engine) {
+      if (onSite) engineInit();
+    } else {
+      const card = $('engine-card');
+      if (card) card.classList.add('hidden');
+    }
   }
 
   /* ========================= Licensing / paywall ========================= */
@@ -98,7 +105,7 @@
     $('acct-pitch').classList.remove('hidden');
     $('link-have-key').classList.remove('hidden');
     $('acct-pitch').textContent =
-      `Go Pro for unlimited downloads, whole-chat export, ZIP, filters & more — ` +
+      `Go Pro for unlimited downloads, ${config.proFeaturesShort} — ` +
       `${p.monthly.price}${p.monthly.period} or ${p.lifetime.launch} lifetime.`;
   }
 

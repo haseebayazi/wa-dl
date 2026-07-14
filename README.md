@@ -261,14 +261,21 @@ Conventions:
 
 ## Build
 
-For a store-ready zip:
+Two store-ready builds come from this one codebase:
 
 ```bash
-./build.sh          # → dist/mediavault-v<version>.zip (runtime files only)
+./build.sh v1       # DOM-only build   → dist/mediavault-v1-v1.0.0.zip  (submit first)
+./build.sh v2       # full engine build → dist/mediavault-v2-v2.0.0.zip  (update later)
+./build.sh          # builds both
 ```
 
-Upload the zip in the Chrome Web Store developer dashboard. See
-[`LAUNCH.md`](LAUNCH.md) for the full publish + monetization walkthrough.
+**v1** ships only the rendered-DOM features (single/bulk downloads, auto-scroll,
+filters) — it drops the `scripting` permission, the WhatsApp-engine files and the
+web-accessible resources, and hides the "Download by chat" card. It carries the
+lowest review risk, so submit it first. **v2** adds the internal-API engine mode
+(whole-history export, ZIP, chat-text export) and is uploaded as an update to the
+same store item once v1 is live. See [`LAUNCH.md`](LAUNCH.md) for the full
+phased publish + monetization walkthrough.
 
 ## Testing
 
