@@ -16,13 +16,16 @@
 (function () {
   'use strict';
 
-  const { helpers, storage } = globalThis.WAMD;
+  const { helpers, storage, license, config } = globalThis.WAMD;
 
   /** Shorthand for document.getElementById. */
   const $ = (id) => document.getElementById(id);
 
   /** The active WhatsApp tab id (null when off-site). */
   let waTabId = null;
+
+  /** Cached licence/quota status (refreshed from the background). */
+  let proState = { pro: false, used: 0, limit: license.FREE_LIMIT, remaining: license.FREE_LIMIT, plan: null };
 
   /* ============================ Bootstrap ============================ */
 
@@ -33,6 +36,7 @@
   async function init() {
     await applyTheme();
     wireEvents();
+    await refreshLicense();
 
     waTabId = await findWhatsAppTab();
     const onSite = waTabId !== null;
@@ -46,7 +50,103 @@
       runSearch('')
     ]);
 
-    if (onSite) engineInit();
+    // Engine mode (whole-history export) is a v2-only feature. In the
+    // DOM-only (v1) build it is disabled and its card is hidden.
+    if (config.engine) {
+      if (onSite) engineInit();
+    } else {
+      const card = $('engine-card');
+      if (card) card.classList.add('hidden');
+    }
+  }
+
+  /* ========================= Licensing / paywall ========================= */
+
+  /** Pull the licence/quota status from the background and render it. */
+  async function refreshLicense() {
+    const res = await send({ type: 'WAMD_LICENSE_STATUS' });
+    if (res && res.ok) proState = res.result;
+    renderAccount();
+    applyProLocks();
+  }
+
+  /** Render the account card (Pro badge, or free quota + upgrade pitch). */
+  function renderAccount() {
+    $('account-card').classList.remove('hidden');
+    $('plan-tag').hidden = !proState.pro;
+
+    if (proState.pro) {
+      $('acct-title').textContent = 'MediaVault Pro';
+      $('acct-title').classList.add('is-pro');
+      $('acct-sub').textContent = proState.plan === 'monthly'
+        ? 'Monthly subscription · unlimited downloads'
+        : 'Lifetime licence · unlimited downloads';
+      $('btn-upgrade').textContent = 'Manage';
+      $('quota-wrap').classList.add('hidden');
+      $('acct-pitch').classList.add('hidden');
+      $('link-have-key').classList.add('hidden');
+      return;
+    }
+
+    const { used, limit } = proState;
+    const left = Math.max(0, limit - used);
+    $('acct-title').textContent = 'Free plan';
+    $('acct-title').classList.remove('is-pro');
+    $('acct-sub').textContent = `${left} of ${limit} free downloads left`;
+    $('quota-wrap').classList.remove('hidden');
+    const pct = Math.min(100, Math.round((used / limit) * 100));
+    $('quota-fill').style.width = `${pct}%`;
+    $('quota-fill').classList.toggle('full', used >= limit);
+    $('quota-text').textContent = used >= limit
+      ? 'Free limit reached — upgrade for unlimited downloads'
+      : `${used} / ${limit} downloads used`;
+    $('btn-upgrade').textContent = 'Upgrade';
+    const p = license.PRICING;
+    $('acct-pitch').classList.remove('hidden');
+    $('link-have-key').classList.remove('hidden');
+    $('acct-pitch').textContent =
+      `Go Pro for unlimited downloads, ${config.proFeaturesShort} — ` +
+      `${p.monthly.price}${p.monthly.period} or ${p.lifetime.launch} lifetime.`;
+  }
+
+  /**
+   * Enable/disable Pro-only controls based on the licence. Free users see
+   * the controls locked; the primary action buttons are intercepted at
+   * click time (see the guards in the engine/bulk handlers).
+   */
+  function applyProLocks() {
+    const pro = proState.pro;
+    // Sub-option inputs are disabled outright for free users.
+    for (const id of ['n-caption', 'n-orig', 'n-zip', 'e-from', 'e-to',
+      'date-from', 'date-to', 'auto-scroll']) {
+      const el = $(id);
+      if (el) el.disabled = !pro;
+    }
+    // Visual "locked" treatment on every data-pro group.
+    for (const group of document.querySelectorAll('[data-pro]')) {
+      group.classList.toggle('locked', !pro);
+    }
+    // Pro users have already unlocked everything — drop the "PRO" tags.
+    for (const badge of document.querySelectorAll('.pro-badge')) {
+      badge.style.display = pro ? 'none' : '';
+    }
+  }
+
+  /** Open the checkout/upgrade page in a new tab. */
+  function openUpgrade() {
+    chrome.tabs.create({ url: license.CONFIG.checkoutUrl });
+  }
+
+  /**
+   * Guard a Pro-only action: returns true (and opens the upgrade page)
+   * when the user is on the free plan, so callers can bail early.
+   *
+   * @returns {boolean} true when blocked
+   */
+  function blockIfFree() {
+    if (proState.pro) return false;
+    openUpgrade();
+    return true;
   }
 
   /* ============================ Engine ============================ */
@@ -194,6 +294,7 @@
 
   /** Kick off a Store-based download for the selected chat + filters. */
   async function startEngineDownload() {
+    if (blockIfFree()) return;   // whole-history export is a Pro feature
     const sel = $('engine-chat');
     const chatId = sel.value;
     if (!chatId) return;
@@ -233,11 +334,13 @@
       btn.disabled = false;
       btn.classList.remove('busy');
       refreshQueue();
+      refreshLicense();
     }
   }
 
   /** Export the selected chat's full text transcript to a .txt file. */
   async function startExportText() {
+    if (blockIfFree()) return;   // chat-text export is a Pro feature
     const sel = $('engine-chat');
     const chatId = sel.value;
     if (!chatId) return;
@@ -292,6 +395,11 @@
   /** Attach all static event listeners once. */
   function wireEvents() {
     $('btn-settings').addEventListener('click', () => chrome.runtime.openOptionsPage());
+    $('btn-upgrade').addEventListener('click', openUpgrade);
+    $('link-have-key').addEventListener('click', (ev) => {
+      ev.preventDefault();
+      chrome.runtime.openOptionsPage();
+    });
     $('btn-open-wa').addEventListener('click', () => {
       chrome.tabs.create({ url: 'https://web.whatsapp.com' });
       window.close();
@@ -452,6 +560,8 @@
     const senders = selectedSenders();
     const autoScroll = $('auto-scroll').checked;
 
+    if (autoScroll && blockIfFree()) return; // auto-scroll loader is Pro
+
     btn.disabled = true;
     btn.classList.add('busy');
     if (autoScroll) $('scan-note').textContent = 'Auto-scrolling and downloading… keep this tab open.';
@@ -471,6 +581,7 @@
       btn.disabled = false;
       btn.classList.remove('busy');
       refreshQueue();
+      refreshLicense();   // quota may have moved
     }
   }
 

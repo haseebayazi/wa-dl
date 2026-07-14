@@ -1,15 +1,15 @@
 <!DOCTYPE html>
 <!--
   popup/popup.html
-  Toolbar popup of WA Media Downloader Pro: current-chat media browser,
-  bulk downloader, queue monitor, statistics and history search.
+  Toolbar popup of MediaVault: current-chat media browser, bulk
+  downloader, engine export, queue monitor, statistics and history.
   Logic lives in popup.js; shared utilities are loaded first.
 -->
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="color-scheme" content="light dark" />
-  <title>WA Media Downloader Pro</title>
+  <title>MediaVault</title>
   <link rel="stylesheet" href="popup.css" />
 </head>
 <body>
@@ -18,16 +18,33 @@
     <!-- Header -->
     <header class="topbar">
       <div class="brand">
-        <img src="../assets/icons/icon32.png" alt="" width="26" height="26" />
+        <img src="../assets/icons/icon32.png" alt="MediaVault" width="28" height="28" />
         <div>
-          <h1>WA Media Downloader <span>Pro</span></h1>
-          <p id="chat-name" class="muted">No chat detected</p>
+          <h1>MediaVault <span class="plan-tag" id="plan-tag" hidden>PRO</span></h1>
+          <p id="chat-name" class="muted">for WhatsApp Web</p>
         </div>
       </div>
       <button id="btn-settings" class="icon-btn" title="Settings" aria-label="Settings">
         <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm9.4 4a7.8 7.8 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7.6 7.6 0 0 0-2-1.2L16.5 3h-4l-.4 2.6a7.6 7.6 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6a7.9 7.9 0 0 0 0 2.4l-2 1.6 2 3.4 2.4-1a7.6 7.6 0 0 0 2 1.2l.4 2.6h4l.4-2.6a7.6 7.6 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.06-.4.1-.8.1-1.2Z"/></svg>
       </button>
     </header>
+
+    <!-- Account / upgrade -->
+    <section id="account-card" class="card account hidden">
+      <div class="acct-row">
+        <div class="acct-info">
+          <b id="acct-title">Free plan</b>
+          <p id="acct-sub" class="muted small">50 free downloads</p>
+        </div>
+        <button id="btn-upgrade" class="btn btn-upgrade">Upgrade</button>
+      </div>
+      <div id="quota-wrap">
+        <div class="quota-bar"><div id="quota-fill"></div></div>
+        <p id="quota-text" class="muted small"></p>
+      </div>
+      <p id="acct-pitch" class="muted small"></p>
+      <a href="#" id="link-have-key" class="muted small link">Already have a licence key? Activate it →</a>
+    </section>
 
     <!-- Shown when the active tab is not WhatsApp Web -->
     <section id="view-offsite" class="card hidden">
@@ -40,7 +57,7 @@
 
       <!-- Engine: full-history download by chat/group -->
       <section class="card" id="engine-card">
-        <h2>Download by chat <span id="engine-status" class="badge">starting…</span></h2>
+        <h2>Download by chat <span class="pro-badge">PRO</span> <span id="engine-status" class="badge">starting…</span></h2>
         <div class="row">
           <label class="small" for="engine-chat">Chat / group</label>
           <select id="engine-chat"><option value="">—</option></select>
@@ -56,7 +73,7 @@
         </div>
         <p id="engine-range" class="muted small"></p>
 
-        <div class="row dates">
+        <div class="row dates" data-pro="1">
           <label class="small" for="e-from">From</label>
           <input id="e-from" type="date" />
           <label class="small" for="e-to">To</label>
@@ -71,10 +88,10 @@
         </div>
 
         <div class="etypes options">
-          <label class="etype"><input type="checkbox" id="n-caption" /> 📝 Caption as name</label>
-          <label class="etype"><input type="checkbox" id="n-orig" /> ＋ Original filename</label>
+          <label class="etype" data-pro="1"><input type="checkbox" id="n-caption" /> 📝 Caption as name</label>
+          <label class="etype" data-pro="1"><input type="checkbox" id="n-orig" /> ＋ Original filename</label>
           <label class="etype"><input type="checkbox" id="n-date" /> 📅 Include date</label>
-          <label class="etype"><input type="checkbox" id="n-zip" /> 🗜 Save as ZIP</label>
+          <label class="etype" data-pro="1"><input type="checkbox" id="n-zip" /> 🗜 Save as ZIP</label>
         </div>
 
         <div class="row">
@@ -89,7 +106,7 @@
       </section>
 
       <!-- Detected media counts -->
-      <section class="card">
+      <section class="card" id="detected-card">
         <h2>Detected media <button id="btn-refresh" class="icon-btn" title="Refresh">⟳</button></h2>
         <div class="chips" id="media-chips">
           <span class="chip" data-kind="image">🖼 <b id="c-image">0</b> Images</span>
@@ -104,7 +121,7 @@
       </section>
 
       <!-- Bulk downloader -->
-      <section class="card">
+      <section class="card" id="bulk-card">
         <h2>Bulk download</h2>
         <div class="row">
           <label class="small" for="scope">Scope</label>
@@ -114,20 +131,20 @@
             <option value="100">Last 100</option>
           </select>
         </div>
-        <div class="row dates">
+        <div class="row dates" data-pro="1">
           <label class="small" for="date-from">From</label>
           <input id="date-from" type="date" />
           <label class="small" for="date-to">To</label>
           <input id="date-to" type="date" />
           <button id="btn-clear-dates" class="mini" title="Clear dates" type="button">✕</button>
         </div>
-        <details id="sender-filter" class="senders">
-          <summary class="small">Filter by sender <span id="sender-summary" class="muted"></span></summary>
+        <details id="sender-filter" class="senders" data-pro="1">
+          <summary class="small">Filter by sender <span class="pro-badge">PRO</span> <span id="sender-summary" class="muted"></span></summary>
           <div id="sender-list" class="sender-list"></div>
         </details>
-        <label class="autoload">
+        <label class="autoload" data-pro="1">
           <input type="checkbox" id="auto-scroll" />
-          <span>Auto-scroll to load older history first <em>(slower; grabs images/PDFs it hasn't loaded yet)</em></span>
+          <span>Auto-scroll to load older history first <span class="pro-badge">PRO</span> <em>(slower; grabs images/PDFs it hasn't loaded yet)</em></span>
         </label>
         <div class="btn-grid">
           <button class="btn" data-filter="images">🖼 Images</button>
@@ -152,7 +169,7 @@
     </div>
 
     <!-- Statistics (always visible) -->
-    <section class="card">
+    <section class="card" id="stats-card">
       <h2>Statistics</h2>
       <div class="stat-grid" id="stats">
         <div><b id="s-total">0</b><span>Total</span></div>
@@ -173,12 +190,14 @@
     </section>
 
     <footer class="muted small footer">
-      100% local · no tracking · no external servers
+      Private by design · media never leaves your device
     </footer>
   </main>
 
   <script src="../utils/helpers.js"></script>
   <script src="../utils/storage.js"></script>
+  <script src="../utils/license.js"></script>
+  <script src="../utils/config.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

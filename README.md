@@ -1,11 +1,19 @@
-# WA Media Downloader Pro
+# MediaVault — for WhatsApp Web
 
-A professional, privacy-first Chrome extension for downloading media from
-[WhatsApp Web](https://web.whatsapp.com) — images, videos, voice notes, audio,
-documents, GIFs, stickers, status media and profile pictures (where technically
-possible).
+A professional, privacy-first Chrome extension for downloading and backing up
+your own media from [WhatsApp Web](https://web.whatsapp.com) — images, videos,
+voice notes, audio, documents, GIFs, stickers, status media and profile
+pictures (where technically possible) — plus full chat transcripts as text.
 
-**100% local. No analytics. No tracking. No external servers.**
+**Private by design. Your messages and media never leave your device. No
+analytics, no tracking.** The only network request is an optional licence check
+when activating Pro (it sends nothing but your licence key).
+
+> **Freemium:** 50 downloads free, then MediaVault Pro unlocks unlimited
+> downloads and every power feature (whole-chat export, ZIP, chat-text export,
+> filters, auto-scroll, folders, custom naming). Pricing and the full
+> go-to-market runbook live in [`LAUNCH.md`](LAUNCH.md); store copy and graphics
+> are in [`store/`](store/). Not affiliated with WhatsApp or Meta.
 
 ---
 
@@ -96,7 +104,7 @@ Design rules:
 ## Folder structure
 
 ```
-wa-media-downloader/
+mediavault/
 ├── manifest.json          Manifest V3 definition
 ├── background.js          Service worker: queue, dedupe, stats, notifications
 ├── content.js             Content script orchestrator (observer, FAB, bulk)
@@ -116,9 +124,14 @@ wa-media-downloader/
 │   ├── dom.js             DOM reading layer
 │   ├── download.js        Download preparation business logic
 │   ├── helpers.js         Pure utility functions
+│   ├── license.js         Free-tier quota + Pro licensing (WAMD.license)
 │   └── storage.js         Settings / stats / IndexedDB history
 ├── styles/
 │   └── content.css        In-page FAB + toast styles
+├── store/                 Chrome Web Store listing copy + screenshots/promos
+├── build.sh               Packages dist/mediavault-v<ver>.zip for upload
+├── LAUNCH.md              Publish + monetization runbook
+├── PRIVACY.md             Privacy policy (host this and link it in the listing)
 └── README.md
 ```
 
@@ -235,7 +248,7 @@ No build step, no framework, no dependencies — plain ES2023.
 ```bash
 git clone <this repo>
 # edit files, then reload the extension:
-# chrome://extensions → WA Media Downloader Pro → ⟳ (Reload)
+# chrome://extensions → MediaVault → ⟳ (Reload)
 ```
 
 Conventions:
@@ -248,14 +261,21 @@ Conventions:
 
 ## Build
 
-For a store-ready zip:
+Two store-ready builds come from this one codebase:
 
 ```bash
-zip -r wa-media-downloader.zip . \
-  -x '.git/*' -x 'README.md' -x '*.zip'
+./build.sh v1       # DOM-only build   → dist/mediavault-v1-v1.0.0.zip  (submit first)
+./build.sh v2       # full engine build → dist/mediavault-v2-v2.0.0.zip  (update later)
+./build.sh          # builds both
 ```
 
-Upload the zip in the Chrome Web Store developer dashboard.
+**v1** ships only the rendered-DOM features (single/bulk downloads, auto-scroll,
+filters) — it drops the `scripting` permission, the WhatsApp-engine files and the
+web-accessible resources, and hides the "Download by chat" card. It carries the
+lowest review risk, so submit it first. **v2** adds the internal-API engine mode
+(whole-history export, ZIP, chat-text export) and is uploaded as an update to the
+same store item once v1 is live. See [`LAUNCH.md`](LAUNCH.md) for the full
+phased publish + monetization walkthrough.
 
 ## Testing
 
@@ -310,12 +330,29 @@ WhatsApp Web's DOM is not a public API. This project isolates that risk:
 - No undocumented WhatsApp internals (webpack modules, Store objects) are
   used — only the rendered DOM.
 
+## Monetization
+
+MediaVault ships with a working freemium gate (`utils/license.js` +
+enforcement in `background.js`):
+
+- **Free:** 50 lifetime downloads, single + basic bulk saving on the open chat.
+- **Pro:** unlimited downloads and every power feature — whole-chat history
+  export, Save-as-ZIP, chat-text export, date/sender filters, auto-scroll,
+  folder organization and custom naming.
+- **Pricing:** $4.99/month or a one-time $24.99 lifetime licence (launch price).
+
+The free quota is enforced in the service worker and can't be bypassed from the
+UI. Payment/licensing is provider-agnostic and pre-wired for Gumroad licence
+keys; swap in ExtensionPay or Lemon Squeezy per [`LAUNCH.md`](LAUNCH.md). Set
+your product in the `CONFIG` block of `utils/license.js` before publishing.
+
 ## Privacy
 
-- All processing happens inside your browser.
+- All media processing happens inside your browser.
 - Media goes straight from the WhatsApp tab to your disk.
-- Settings live in Chrome's storage; history/statistics in local IndexedDB.
-- No analytics, no telemetry, no external requests, no remote code.
+- Settings/licence live in Chrome's storage; history/statistics in local IndexedDB.
+- No analytics, no telemetry, no remote code. The only network request is an
+  optional Pro licence check (licence key only) — see [`PRIVACY.md`](PRIVACY.md).
 
 This tool is for downloading **your own** conversations' media. Respect other
 people's privacy and WhatsApp's Terms of Service.
@@ -327,7 +364,7 @@ MIT — see below.
 ```
 MIT License
 
-Copyright (c) 2026 WA Media Downloader Pro contributors
+Copyright (c) 2026 MediaVault contributors
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

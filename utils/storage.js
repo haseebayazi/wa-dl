@@ -1,7 +1,7 @@
 /**
  * utils/storage.js
  * ------------------------------------------------------------------
- * All persistence for WA Media Downloader Pro:
+ * All persistence for MediaVault:
  *
  *  - Settings      → chrome.storage.sync   (small, roams with account)
  *  - Statistics    → chrome.storage.local  (counters, updated often)

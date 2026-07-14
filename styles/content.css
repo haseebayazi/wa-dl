@@ -1,10 +1,10 @@
 /**
  * styles/content.css
  * ------------------------------------------------------------------
- * In-page UI for WA Media Downloader Pro: the floating download
- * button (FAB) shown over the media viewer, and toast notifications.
- * Everything is prefixed `wamd-` and uses maximal z-index layering so
- * WhatsApp's own styles are never affected.
+ * In-page UI for MediaVault: the floating download button (FAB) shown
+ * over the media viewer, and toast notifications. Everything is
+ * prefixed `wamd-` and uses maximal z-index layering so WhatsApp's own
+ * styles are never affected.
  * ------------------------------------------------------------------
  */
 
@@ -26,8 +26,8 @@
   color: #fff;
   cursor: pointer;
 
-  /* Glassmorphism over any media */
-  background: linear-gradient(135deg, rgba(0, 168, 132, 0.85), rgba(0, 128, 105, 0.85));
+  /* Glassmorphism over any media (MediaVault indigo→violet) */
+  background: linear-gradient(135deg, rgba(91, 75, 224, 0.88), rgba(124, 58, 237, 0.88));
   backdrop-filter: blur(12px) saturate(140%);
   -webkit-backdrop-filter: blur(12px) saturate(140%);
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.25);
