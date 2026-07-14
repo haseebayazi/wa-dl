@@ -51,10 +51,12 @@
    */
   const CONFIG = {
     provider: 'gumroad',
-    // Your Gumroad product permalink (the slug after gumroad.com/l/).
-    productPermalink: 'REPLACE_WITH_GUMROAD_PERMALINK',
+    // Gumroad product permalink (the slug after gumroad.com/l/). This MUST
+    // match the permalink of your Gumroad product. Recommended: 'mediavault-pro'
+    // (rename the product's URL on Gumroad from the default 'wa-dl' to match).
+    productPermalink: 'mediavault-pro',
     // Where "Upgrade" / "Buy" buttons send the user to pay.
-    checkoutUrl: 'https://mediavault.gumroad.com/l/mediavault-pro',
+    checkoutUrl: 'https://haseebtech0.gumroad.com/l/mediavault-pro',
     // Gumroad's public licence-verify endpoint (no secret key required).
     verifyUrl: 'https://api.gumroad.com/v2/licenses/verify',
     // Re-check an active subscription licence at most this often (ms).
