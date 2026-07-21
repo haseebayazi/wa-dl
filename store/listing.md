@@ -43,19 +43,22 @@ English (add more locales later for reach).
 
 ---
 
-> **Two-phase submission.** Submit the **v1 (DOM-only)** package first with the
-> **v1 description** below (it doesn't advertise the engine-only features that
-> aren't in the v1 build — reviewers flag listing/feature mismatches). When the
+> **Start here:** the simple, step-by-step submission guide with all copy inline
+> is **`SUBMISSION.md`** in the repo root. This file is the reference for both
+> the free **v1** and the paid **v2** listings.
+>
+> **Two-phase submission.** Submit the **free v1** package first with the **v1
+> description** below (it advertises only what the free build does — no pricing,
+> no engine-only features; reviewers flag listing/feature mismatches). When the
 > **v2** package is approved as an update, swap in the full description that
-> follows. Everything else in this file (title, permissions, privacy) is the
-> same for both.
+> follows. Title, permissions and privacy are otherwise the same.
 
-## Detailed description — v1 (DOM-only, first submission)
+## Detailed description — v1 (free, first submission)
 
 ```
 MediaVault is the fastest, most private way to save and back up your own media from WhatsApp Web — images, videos, voice notes, audio, documents, GIFs and stickers.
 
-No more right-click-save on one photo at a time. Open web.whatsapp.com, click the MediaVault icon, and grab everything in the open chat at once.
+No more right-click-save on one photo at a time. Open web.whatsapp.com, click the MediaVault icon, and save everything in the open chat at once — completely free.
 
 ★ WHAT YOU CAN DO
 • Download images, videos, voice notes, audio, documents, GIFs & stickers
@@ -71,17 +74,18 @@ No more right-click-save on one photo at a time. Open web.whatsapp.com, click th
 ★ WHY MEDIAVAULT
 • Private by design — your messages and media never leave your device. No servers, no analytics, no tracking.
 • On-device processing — files go straight from your WhatsApp Web tab to your Downloads folder.
-• Lightweight and fast — no account required to start.
-
-★ FREE & PRO
-MediaVault is free to start: your first 50 downloads are on us. Upgrade to Pro for unlimited downloads plus power features — auto-scroll history loading, date & sender filters, folder organization and custom file naming. Pro is $4.99/month (cancel anytime) or a one-time $24.99 lifetime licence.
+• Lightweight, fast, and free — no account required.
 
 ★ PRIVACY
-MediaVault does all its work locally in your browser. It does not upload, read, store or transmit your conversations anywhere. The only network request it makes is a licence check when you activate Pro — and that sends nothing but your licence key.
+MediaVault does all its work locally in your browser. It does not upload, read, store or transmit your conversations anywhere. It makes no external network requests.
 
 ★ GOOD TO KNOW
 MediaVault is an independent tool and is not affiliated with, endorsed by, or sponsored by WhatsApp LLC or Meta Platforms, Inc. "WhatsApp" is a trademark of its respective owner, used here only to describe compatibility. Please back up your own conversations and respect other people's privacy and WhatsApp's Terms of Service.
 ```
+
+> The free v1 build requests only `downloads`, `storage`, `activeTab`, `tabs`,
+> `notifications` and host access to `web.whatsapp.com` — no `scripting`, no
+> payment host, no web-accessible resources.
 
 ## Detailed description — v2 (full, use after v2 is approved)
 

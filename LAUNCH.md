@@ -1,5 +1,10 @@
 # MediaVault — Launch, Submission & Monetization Roadmap
 
+> **Just want to publish?** Start with **[`SUBMISSION.md`](SUBMISSION.md)** — the
+> short, do-this-now guide for shipping the free version. This file is the deeper
+> reference for the paid v2 rollout and payment options.
+
+
 A step-by-step runbook to take MediaVault from this repo to a **paid, published**
 Chrome Web Store extension, using a **two-phase** rollout that minimises the risk
 of rejection.

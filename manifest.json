@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "MediaVault - WhatsApp Media & Chat Downloader",
-  "description": "Download & back up images, videos, voice notes, documents and full chat transcripts from WhatsApp Web. Fast, private, on-device.",
+  "name": "MediaVault - WhatsApp Web Media Downloader",
+  "description": "Download & back up images, videos, voice notes, audio, documents, GIFs and stickers from WhatsApp Web. Fast, private, on-device.",
   "version": "1.0.0",
   "minimum_chrome_version": "116",
 

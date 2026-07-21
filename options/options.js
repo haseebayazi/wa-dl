@@ -45,6 +45,12 @@
 
   /** Load the licence status and render the Pro card + feature locks. */
   async function refreshLicense() {
+    // Fully-free (v1) build: no paywall — hide the Pro card, unlock settings.
+    if (!config.paid) {
+      $('pro-card').classList.add('hidden');
+      applyProLocks(true);
+      return;
+    }
     const res = await send({ type: 'WAMD_LICENSE_STATUS' });
     const s = (res && res.ok) ? res.result : { pro: false, used: 0, limit: license.FREE_LIMIT };
     renderLicense(s);

@@ -269,13 +269,16 @@ Two store-ready builds come from this one codebase:
 ./build.sh          # builds both
 ```
 
-**v1** ships only the rendered-DOM features (single/bulk downloads, auto-scroll,
-filters) — it drops the `scripting` permission, the WhatsApp-engine files and the
-web-accessible resources, and hides the "Download by chat" card. It carries the
-lowest review risk, so submit it first. **v2** adds the internal-API engine mode
-(whole-history export, ZIP, chat-text export) and is uploaded as an update to the
-same store item once v1 is live. See [`LAUNCH.md`](LAUNCH.md) for the full
-phased publish + monetization walkthrough.
+**v1** is the **free** build: only rendered-DOM features (single/bulk downloads,
+auto-scroll, filters), no paywall, and no `scripting`/payment/web-accessible
+permissions. Submit it first — lowest review risk. **v2** is the **paid** build:
+it adds the internal-API engine mode (whole-history export, ZIP, chat-text
+export) plus the freemium paywall, uploaded as an update to the same store item
+once v1 is live.
+
+👉 **Start with [`SUBMISSION.md`](SUBMISSION.md)** — the step-by-step guide to
+publishing the free version (every field, all copy, asset links). Payment options
+for v2 are covered there and in [`LAUNCH.md`](LAUNCH.md).
 
 ## Testing
 

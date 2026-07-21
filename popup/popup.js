@@ -64,6 +64,15 @@
 
   /** Pull the licence/quota status from the background and render it. */
   async function refreshLicense() {
+    // Fully-free (v1) build: no paywall at all — hide the upgrade card and
+    // unlock every feature with no download limit.
+    if (!config.paid) {
+      $('account-card').classList.add('hidden');
+      $('plan-tag').hidden = true;
+      proState = { pro: true, used: 0, limit: 0, remaining: Infinity, plan: 'free' };
+      applyProLocks();
+      return;
+    }
     const res = await send({ type: 'WAMD_LICENSE_STATUS' });
     if (res && res.ok) proState = res.result;
     renderAccount();

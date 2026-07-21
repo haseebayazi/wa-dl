@@ -20,11 +20,12 @@
 'use strict';
 
 // Shared classic-script modules (same files the content script uses).
-importScripts('utils/helpers.js', 'utils/storage.js', 'utils/license.js');
+importScripts('utils/helpers.js', 'utils/storage.js', 'utils/license.js', 'utils/config.js');
 
 const helpers = globalThis.WAMD.helpers;
 const store = globalThis.WAMD.storage;
 const license = globalThis.WAMD.license;
+const cfg = globalThis.WAMD.config;
 
 /** Maximum automatic retry attempts per failed item. */
 const MAX_RETRIES = 3;
@@ -95,7 +96,8 @@ async function enqueue(payload) {
   // unlimited and never counted). Over the limit → refuse and prompt upgrade.
   // Batch accounting for refused items is handled by the caller, which stops
   // the batch and adjusts its total — so we don't touch the batch here.
-  const slot = await reserveSlot();
+  // The fully-free (v1) build has no paywall, so downloads are never gated.
+  const slot = cfg.paid ? await reserveSlot() : { ok: true, pro: true };
   if (!slot.ok) {
     notifyQuota(settings, slot);
     broadcastQueue();
